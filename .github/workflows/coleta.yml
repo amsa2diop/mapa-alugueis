@@ -1,0 +1,63 @@
+name: Coleta
+# De hora em hora, das 8h às 23h (horário de Brasília = UTC-3). De madrugada não roda.
+on:
+  schedule:
+    - cron: "17 0-2,11-23 * * *"
+  workflow_dispatch:
+    inputs:
+      args:
+        description: "Opções do coletor (ex.: --completo, --sem-olx)"
+        required: false
+        default: ""
+concurrency:
+  group: coleta
+  cancel-in-progress: false
+permissions:
+  contents: write
+jobs:
+  coleta:
+    runs-on: ubuntu-latest
+    timeout-minutes: 58
+    env:
+      TZ: America/Sao_Paulo
+      PLAYWRIGHT_BROWSERS_PATH: /home/runner/.cache/ms-playwright
+      PYTHONUNBUFFERED: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - name: Estado (histórico dos anúncios)
+        uses: actions/checkout@v4
+        with:
+          ref: estado
+          path: estado
+          fetch-depth: 1
+      - name: Site publicado
+        uses: actions/checkout@v4
+        with:
+          ref: gh-pages
+          path: publicar
+          fetch-depth: 1
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Navegador para OLX e Imovelweb
+        run: pip install -q playwright && python -m playwright install --with-deps chromium
+      - name: Restaurar estado
+        run: |
+          mkdir -p dados
+          cp estado/*.json dados/ 2>/dev/null || true
+          cp estado/coletor.log dados/ 2>/dev/null || true
+          gunzip -c estado/anuncios.json.gz > dados/anuncios.json
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "41898282+github-actions[bot]@users.noreply.github.com"
+      - name: Coletar e publicar
+        run: python coletor.py ${{ github.event.inputs.args }}
+      - name: Guardar estado
+        if: always()
+        run: |
+          test -s dados/anuncios.json || exit 0
+          gzip -c dados/anuncios.json > estado/anuncios.json.gz
+          for f in meta.json geocache.json perimetro.json coletor.log; do cp "dados/$f" estado/ 2>/dev/null || true; done
+          cd estado
+          git add -A
+          git commit -q --amend -m "estado" || exit 0
+          git push -q --force origin HEAD:estado

@@ -1,0 +1,7 @@
+dados/
+publicar/
+estado/
+__pycache__/
+site/dados.json
+site/config.json
+site/perimetro_padrao.json
