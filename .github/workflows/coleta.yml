@@ -1,9 +1,12 @@
 name: Coleta
 # De hora em hora, das 8h às 23h (horário de Brasília = UTC-3). De madrugada não roda.
+#
+# O agendador do GitHub (schedule) não disparou neste repositório, então cada rodada,
+# ao terminar, agenda a próxima ela mesma (job "relogio": espera até hh:12 e dispara
+# esta mesma coleta). O schedule fica como reserva. Para reiniciar a corrente se ela
+# parar: Actions → Coleta → Run workflow (ou o botão "Atualizar agora" do site).
 on:
   schedule:
-    # dois horários por hora: o agendador do GitHub às vezes pula execuções;
-    # a segunda só coleta se a primeira não tiver rodado (ver "Precisa coletar?")
     - cron: "12 0-2,11-23 * * *"
     - cron: "42 0-2,11-23 * * *"
   workflow_dispatch:
@@ -12,17 +15,23 @@ on:
         description: "Opções do coletor (ex.: --completo, --sem-olx)"
         required: false
         default: ""
-concurrency:
-  group: coleta
-  cancel-in-progress: false
+      cadeia:
+        description: "Uso interno: 1 = disparada pela própria corrente"
+        required: false
+        default: ""
 permissions:
   contents: write
+  actions: write
+env:
+  TZ: America/Sao_Paulo
 jobs:
   coleta:
     runs-on: ubuntu-latest
     timeout-minutes: 58
+    concurrency:
+      group: coleta
+      cancel-in-progress: false
     env:
-      TZ: America/Sao_Paulo
       PLAYWRIGHT_BROWSERS_PATH: /home/runner/.cache/ms-playwright
       PYTHONUNBUFFERED: "1"
     steps:
@@ -42,8 +51,6 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      - name: Navegador para OLX e Imovelweb
-        run: pip install -q playwright && python -m playwright install --with-deps chromium
       - name: Restaurar estado
         run: |
           mkdir -p dados
@@ -54,19 +61,28 @@ jobs:
           git config --global user.email "41898282+github-actions[bot]@users.noreply.github.com"
       - name: Precisa coletar?
         id: precisa
+        env:
+          CADEIA: ${{ github.event.inputs.cadeia }}
         run: |
           python - <<'PY' >> "$GITHUB_OUTPUT"
           import json, os
           from datetime import datetime, timezone
-          ev = os.environ.get("GITHUB_EVENT_NAME")
+          ev, cadeia = os.environ.get("GITHUB_EVENT_NAME"), os.environ.get("CADEIA") == "1"
+          madrugada = datetime.now().hour < 8          # TZ = America/Sao_Paulo
           try:
               m = json.load(open("dados/meta.json", encoding="utf8"))
               ult = max(datetime.fromisoformat(f["tentativa"]) for f in m["fontes"].values() if f.get("tentativa"))
               idade = (datetime.now(timezone.utc) - ult).total_seconds() / 60
           except Exception:
               idade = 999
-          print("sim=" + ("true" if ev != "schedule" or idade > 40 else "false"))
+          automatica = ev == "schedule" or cadeia
+          # a pessoa apertando "Run workflow" sempre coleta; as automáticas respeitam a madrugada e não repetem
+          sim = (not automatica) or (not madrugada and idade > 40)
+          print("sim=" + ("true" if sim else "false"))
           PY
+      - name: Navegador para OLX e Imovelweb
+        if: steps.precisa.outputs.sim == 'true'
+        run: pip install -q playwright && python -m playwright install --with-deps chromium
       - name: Coletar e publicar
         if: steps.precisa.outputs.sim == 'true'
         run: python coletor.py ${{ github.event.inputs.args }}
@@ -80,3 +96,33 @@ jobs:
           git add -A
           git commit -q --amend -m "estado" || exit 0
           git push -q --force origin HEAD:estado
+
+  relogio:
+    # espera até a próxima hh:12 (entre 8h e 23h) e dispara a próxima coleta.
+    # Só um relógio fica vivo: um novo cancela o anterior.
+    needs: coleta
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 350
+    concurrency:
+      group: relogio
+      cancel-in-progress: true
+    steps:
+      - name: Esperar a próxima hora
+        run: |
+          python3 - <<'PY' > espera.txt
+          from datetime import datetime, timedelta
+          agora = datetime.now()                       # TZ = America/Sao_Paulo
+          alvo = agora.replace(minute=12, second=0, microsecond=0)
+          while alvo <= agora + timedelta(minutes=5) or alvo.hour < 8:
+              alvo += timedelta(hours=1)
+              alvo = alvo.replace(minute=12)
+          # o job dura no máximo ~6 h: de madrugada dorme em etapas e a rodada seguinte só re-agenda
+          print(int(min((alvo - agora).total_seconds(), 5 * 3600 + 30 * 60)))
+          PY
+          echo "esperando $(cat espera.txt) s"
+          sleep "$(cat espera.txt)"
+      - name: Disparar a próxima coleta
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh workflow run coleta.yml --repo "${{ github.repository }}" --ref "${{ github.ref_name }}" -f cadeia=1
