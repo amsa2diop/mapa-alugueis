@@ -16,7 +16,7 @@ from pathlib import Path
 
 # ---------------- configuração ----------------
 TOTAL_MAX = 200_000       # praticamente sem teto (só descarta preço absurdo); o filtro fica na página
-MAX_FOTOS = 12
+MAX_FOTOS = 80          # todas as fotos; o site leva 4 no arquivo principal e o resto sob demanda
 AREA_MIN = 0              # sem mínimo na coleta; o filtro de área fica na página
 FULL_SWEEP_HORAS = 6      # VivaReal: varredura completa a cada N horas
 OLX_VALIDADE_HORAS = 24 * 3   # OLX: some do mapa se não aparecer na varredura diária (3 dias de folga)
@@ -105,7 +105,7 @@ def tipo_imovel(texto):
 QA_URL = "https://apigw.prod.quintoandar.com.br/house-listing-search/v2/search/list"
 QA_CAMPOS = ["id", "location", "rent", "totalCost", "iptuPlusCondominium", "condominium", "iptu", "area",
              "bedrooms", "bathrooms", "parkingSpots", "address", "neighbourhood", "regionName", "city", "type",
-             "imageList", "isFurnished"]
+             "imageList", "isFurnished", "shortRentDescription"]
 
 def coletar_quintoandar():
     base = [(f"fields[{i}]", f) for i, f in enumerate(QA_CAMPOS)] + [
@@ -153,6 +153,7 @@ def coletar_quintoandar():
                 "bairro": s.get("neighbourhood") or s.get("regionName") or "",
                 "cidade": s.get("city") or "", "endereco": s.get("address") or "",
                 "mobiliado": bool(s.get("isFurnished")),
+                "descricao": (s.get("shortRentDescription") or "").strip(),
             })
         offset += len(hits)
         if not hits or offset >= total:
@@ -383,7 +384,32 @@ def olx_paginas(varredura):
         out += [(f"casas:{b}", f"{OLX_BASE_CASAS}{b}?{filtro}", 3) for b in OLX_BAIRROS]
     return out
 
-def coletar_olx(varredura=False):
+OLX_DETALHES_POR_RODADA = 45
+
+def olx_detalhe(html_txt):
+    """Da página do anúncio: centro do mapa (CEP), rua, descrição e fotos."""
+    import html as H
+    h = H.unescape(html_txt)
+    out = {}
+    la, lo = re.search(r'"mapLati":(-?[\d.]+)', h), re.search(r'"mapLong":(-?[\d.]+)', h)
+    if la and lo:
+        out["lat"], out["lng"] = float(la.group(1)), float(lo.group(1))
+    m = re.search(r'"address":"([^"]{3,120})","neighbourhood"', h)
+    if m:
+        out["endereco"] = m.group(1)
+    for bloco in re.findall(r'<script[^>]*application/ld\+json[^>]*>(.*?)</script>', html_txt, re.S):
+        try:
+            j = json.loads(bloco)
+        except Exception:
+            continue
+        for o in (j if isinstance(j, list) else [j]):
+            if isinstance(o, dict) and o.get("description") and o.get("image"):
+                out["descricao"] = re.sub(r"<br\s*/?>", "\n", o["description"]).strip()
+                ims = o["image"] if isinstance(o["image"], list) else [o["image"]]
+                out["fotos"] = [i.get("contentUrl") if isinstance(i, dict) else i for i in ims if i][:MAX_FOTOS]
+    return out
+
+def coletar_olx(varredura=False, detalhados=frozenset()):
     try:
         import os
         # navegador dentro da pasta do projeto (o AppData do app do Claude é virtualizado)
@@ -422,6 +448,25 @@ def coletar_olx(varredura=False):
                 time.sleep(random.uniform(1.5, 3.0))
             if bloqueado:
                 break
+        # anúncios ainda sem detalhe: abre a página de cada um (poucos por rodada)
+        detalhes = {}
+        if not bloqueado:
+            fila = [a for a in brutos.values() if f"olx-{a['listId']}" not in detalhados
+                    and sem_acento((a.get("locationDetails") or {}).get("municipality")) in CIDADES_OK]
+            for a in fila[:OLX_DETALHES_POR_RODADA]:
+                try:
+                    r = pg.goto(a["url"], wait_until="domcontentloaded", timeout=45000)
+                    pg.wait_for_timeout(1500)
+                except Exception:
+                    continue
+                if (r and r.status >= 400) or "Attention Required" in pg.title() or "Just a moment" in pg.title():
+                    log("OLX: bloqueado ao abrir anúncios; detalhes param aqui")
+                    break
+                d = olx_detalhe(pg.content())
+                if d:
+                    detalhes[f"olx-{a['listId']}"] = d
+                time.sleep(random.uniform(1.0, 2.0))
+            log(f"OLX: detalhes lidos de {len(detalhes)} anúncios (faltavam {len(fila)})")
         b.close()
     if not brutos:
         return None, bloqueado
@@ -436,6 +481,10 @@ def coletar_olx(varredura=False):
             continue
         dy, dx = _jitter(it["id"])
         it["lat"], it["lng"] = g[0] + dy, g[1] + dx
+        d = detalhes.get(it["id"])
+        if d:
+            it.update({k: v for k, v in d.items() if v})
+            it["det"] = True
         itens.append(it)
     salvar(GEOCACHE, cache)
     log(f"OLX{' (varredura)' if varredura else ''}: {paginas} páginas, {len(brutos)} anúncios, {len(itens)} no Rio/Niterói com local")
@@ -486,14 +535,50 @@ def cnm_pagina(url):
         o = _objeto(t, m.start())
         if o:
             pontos[o["id"]] = o
+    # as fotos de cada anúncio ficam num objeto "pictures" separado; o caminho traz o id do anúncio
+    fotos = {}
+    for m in re.finditer(r'"pictures":\{', t):
+        try:
+            o = _objeto(t, m.start() + len('"pictures":'))
+        except Exception:
+            o = None
+        lst = _cnm_todas((o or {}).get("list") or [], (o or {}).get("count"))
+        if lst:
+            partes = lst[0].split("/")
+            if len(partes) > 1 and partes[1].isdigit():
+                fotos[int(partes[1])] = [CNM_IMG + f for f in lst]
     anuncios, vistos = [], set()
     for m in re.finditer(r'"prices":\{"main"', t):
         ini = _inicio_objeto(t, m.start())   # objeto do anúncio que contém "prices"
         o = _objeto(t, ini) if ini is not None else None
         if o and o.get("id") not in vistos and o.get("transaction") in ("RENT", "rent") and o.get("location"):
             vistos.add(o.get("id"))
+            if isinstance(o.get("pictures"), dict) and o["pictures"].get("list"):
+                o["_fotos"] = [CNM_IMG + f for f in _cnm_todas(o["pictures"]["list"], o["pictures"].get("count"))]
+            elif o.get("id") in fotos:
+                o["_fotos"] = fotos[o["id"]]
+            d = o.get("descriptionRaw") or o.get("description")
+            o["_descricao"] = _texto_ref(t, d) if isinstance(d, str) else ""
             anuncios.append(o)
     return total, anuncios, pontos
+
+def _cnm_todas(lst, total):
+    """A busca traz só as 5 primeiras fotos, mas os nomes seguem -1.jpg, -2.jpg, ... até o total informado."""
+    if lst and total and total > len(lst):
+        m = re.match(r"(.*-)(\d+)(\.\w+)$", lst[-1])
+        if m and int(m.group(2)) == len(lst):
+            lst = lst + [f"{m.group(1)}{k}{m.group(3)}" for k in range(len(lst) + 1, min(total, MAX_FOTOS) + 1)]
+    return lst
+
+def _texto_ref(t, d):
+    """Textos longos do Next.js vêm como referência "$105" para uma linha "105:T<tam>,<texto>"."""
+    if not d.startswith("$"):
+        return d
+    m = re.search(r"(?<![0-9a-zA-Z])" + re.escape(d[1:]) + r":T([0-9a-f]+),", t)
+    if not m:
+        return ""
+    bruto = t[m.end():m.end() + int(m.group(1), 16)]
+    return bruto.encode("utf-8")[:int(m.group(1), 16)].decode("utf-8", "ignore")
 
 def _inicio_objeto(txt, i):
     """Posição do '{' do objeto que contém a posição i (ignora chaves dentro de strings de forma simples)."""
@@ -539,7 +624,8 @@ def cnm_item(o, ponto, cidade):
         "vagas": int(_cnt(o.get("garages")) or num(prev.get("garages"))),
         "bairro": _d(loc.get("neighborhood")).get("name") or "", "cidade": _d(loc.get("city")).get("name") or cidade,
         "endereco": (_d(loc.get("street")).get("name") or "") if publico else "",
-        "fotos": [CNM_IMG + foto] if foto else [], "titulo": (o.get("title") or "")[:140],
+        "fotos": (o.get("_fotos") or ([CNM_IMG + foto] if foto else []))[:MAX_FOTOS], "titulo": (o.get("title") or "")[:140],
+        "descricao": (o.get("_descricao") or "").strip(),
         "anunciante": (_d(o.get("publisher")).get("name") or "").strip(),
         "video": _d(o.get("media")).get("videoUrl") or None,
     }
@@ -591,7 +677,8 @@ def iw_item(c, cidade):
     if not precos:
         return None
     aluguel = _brl(precos[0])
-    mc = re.search(r"R\$\s*([\d\.]+)\s*Condom", c.get("preco") or "", re.I)
+    mc = (re.search(r"R\$\s*([\d\.]+)\s*Condom", c.get("preco") or "", re.I)
+          or re.search(r"Cond\w*\.?\s*:?\s*R\$\s*([\d\.]+)", c.get("preco") or "", re.I))
     feat = c.get("feat") or ""
     ma = re.search(r"(\d+)\s*m²\s*(?:útil|tot)", feat) or re.search(r"(\d+)\s*m²", feat)
     mq = re.search(r"(\d+)\s*qu", feat)
@@ -712,15 +799,19 @@ def kenlo_item(o, imob, site):
         iptu /= 12
     fotos = [p.get("picture_full") or p.get("picture_thumb") for p in o.get("photos") or [] if p.get("picture_full") or p.get("picture_thumb")]
     ref = o.get("property_full_reference") or o.get("url")
+    # o "total_rent" do Kenlo = aluguel + condomínio + IPTU mensal
+    condo = num(o.get("condo_fees")) or max(0.0, round(num(o.get("total_rent")) - aluguel - iptu, 2))
+    rua = (o.get("full_address") or "").split(" - ")[0].strip()
     return {
         "id": f"imob-{sem_acento(imob).replace(' ', '')}-{ref}", "fonte": "Imobiliárias", "tipo": tipo, "anunciante": imob,
         "url": site + (o.get("url") or ""), "aprox": True,
-        "aluguel": aluguel, "condominio": num(o.get("condo_fees")), "iptu": round(iptu),
-        "total": aluguel + num(o.get("condo_fees")), "area": _faixa(o.get("area")),
+        "aluguel": aluguel, "condominio": condo, "iptu": round(iptu),
+        "total": aluguel + condo, "area": _faixa(o.get("area")),
         "quartos": int(_faixa(o.get("bedrooms"))), "banheiros": int(_faixa(o.get("bathrooms"))),
         "vagas": int(_faixa(o.get("garages"))), "bairro": o.get("neighborhood_display") or o.get("neighborhood") or "",
-        "cidade": o.get("city") or "", "endereco": "", "fotos": fotos[:MAX_FOTOS],
+        "cidade": o.get("city") or "", "endereco": rua, "fotos": fotos[:MAX_FOTOS],
         "titulo": (o.get("heading1") or o.get("website_title") or "")[:140],
+        "descricao": (o.get("listing_description") or "").replace("**", "").strip(),
         "video": (o.get("video_url") or "").strip() or None,
     }
 
@@ -793,6 +884,7 @@ def selfspin_item(v):
         "vagas": int(num(v.get("imv_qtd_vagas"))), "bairro": v.get("imv_bairro") or "", "cidade": v.get("imv_cidade") or "Niterói",
         "endereco": "" if oculto else " ".join(str(p) for p in (v.get("imv_endereco"), v.get("imv_end_numero")) if p),
         "fotos": fotos[:MAX_FOTOS], "titulo": (v.get("imv_titulo") or "")[:140], "criado": v.get("createdAt"),
+        "descricao": (v.get("imv_obs") or "").strip(),
         "video": (v.get("imv_videourl") or "").strip() or None,
     }
 
@@ -887,6 +979,13 @@ def mesclar(estado, itens, t, fonte_completa=None):
             continue
         vistos.add(it["id"])
         antigo = estado.get(it["id"])
+        if antigo and antigo.get("det") and not it.get("det"):
+            for k in ("lat", "lng", "endereco", "descricao"):
+                if antigo.get(k):
+                    it[k] = antigo[k]
+            if len(antigo.get("fotos") or []) > len(it.get("fotos") or []):
+                it["fotos"] = antigo["fotos"]
+            it["det"] = True
         if antigo:
             it["primeiro"] = antigo["primeiro"]
             if antigo.get("inicial"):
@@ -1044,7 +1143,31 @@ def gerar_site(estado, meta):
     campos = ["id", "fonte", "url", "lat", "lng", "aprox", "aluguel", "condominio", "iptu", "total", "area",
               "quartos", "banheiros", "vagas", "bairro", "cidade", "endereco", "fotos", "titulo", "primeiro",
               "criado", "inicial", "total_anterior", "mobiliado", "anunciante", "tambem", "tipo", "video", "antes"]
-    enxuto = [{k: v[k] for k in campos if v.get(k) not in (None, "", False, [])} for v in lista]
+    FOTOS_SITE, DESC_SITE = 4, 180
+    import hashlib, shutil
+    det_dir = SITE / "det"
+    shutil.rmtree(det_dir, ignore_errors=True)
+    det_dir.mkdir(parents=True, exist_ok=True)
+    pedacos = {}
+    enxuto = []
+    for v in lista:
+        e = {k: v[k] for k in campos if v.get(k) not in (None, "", False, [])}
+        fotos, desc = v.get("fotos") or [], re.sub(r"\s+\n", "\n", (v.get("descricao") or "")).strip()
+        extra = {}
+        if len(fotos) > FOTOS_SITE:
+            e["fotos"], e["nf"] = fotos[:FOTOS_SITE], len(fotos)
+            extra["fotos"] = fotos
+        if desc:
+            e["desc"] = desc[:DESC_SITE]
+            if len(desc) > DESC_SITE:
+                e["desc_mais"] = 1
+                extra["descricao"] = desc[:4000]
+        if extra:
+            n = int(hashlib.md5(v["id"].encode()).hexdigest(), 16) % 64
+            pedacos.setdefault(n, {})[v["id"]] = extra
+        enxuto.append(e)
+    for n, conteudo in pedacos.items():
+        (det_dir / f"{n}.json").write_text(json.dumps(conteudo, ensure_ascii=False, separators=(",", ":")), encoding="utf-8")
     log(f"Repetidos entre sites juntados: {sum(len(v.get('tambem', [])) for v in lista)}")
     SITE.mkdir(exist_ok=True)
     payload = {"gerado": iso(t), "perimetro_t": PERIM_T, "filtros": {"total_max": TOTAL_MAX, "area_min": AREA_MIN},
@@ -1077,6 +1200,9 @@ def publicar():
         return
     for nome in ("index.html", "dados.json", "config.json", "perimetro_padrao.json"):
         shutil.copyfile(SITE / nome, PUBLICAR / nome)
+    shutil.rmtree(PUBLICAR / "det", ignore_errors=True)
+    if (SITE / "det").exists():
+        shutil.copytree(SITE / "det", PUBLICAR / "det")
     (PUBLICAR / ".nojekyll").touch()
     git("add", "-A")
     if not git("status", "--porcelain").strip():
@@ -1158,7 +1284,7 @@ def main():
             ult = fontes.get("OLX", {}).get("varredura")
             varredura = (not ult or t - datetime.fromisoformat(ult) > timedelta(hours=OLX_VARREDURA_HORAS)
                          or "--completo" in sys.argv)
-            itens, bloqueado = coletar_olx(varredura)
+            itens, bloqueado = coletar_olx(varredura, frozenset(k for k, v in estado.items() if v.get("det")))
             if itens is None:
                 registra("OLX", False, obs="bloqueado pelo site nesta rodada" if bloqueado else "nenhum anúncio lido")
             else:

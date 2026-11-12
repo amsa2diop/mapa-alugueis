@@ -3,6 +3,10 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Aluguéis">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
 <title>Aluguéis Rio · Niterói</title>
 <script>
   // tema antes de pintar: auto = escuro das 18h às 6h
@@ -54,6 +58,9 @@ a{color:inherit}
 /* ---------- layout ---------- */
 .app{display:grid;grid-template-columns:288px 1fr;height:calc(100vh - 56px);height:calc(100dvh - 56px)}
 .painel{border-right:1px solid var(--line);overflow:auto;padding:20px;display:flex;flex-direction:column;gap:22px}
+.fontes-todas{display:flex;gap:6px;margin:-2px 0 8px}
+.fontes-todas button{font-size:12px;color:var(--ink2);background:none;border:1px solid var(--line);border-radius:999px;padding:3px 9px;cursor:pointer}
+.fontes-todas button:hover{color:var(--ink);border-color:var(--ink3)}
 .cab-fontes{display:flex;align-items:baseline;justify-content:space-between;gap:8px}
 .atualizar{font-size:12px;font-weight:500;color:var(--ink2);text-decoration:none;border:1px solid var(--line);border-radius:999px;padding:4px 10px}
 .atualizar:hover{color:var(--ink);border-color:var(--ink3)}
@@ -130,9 +137,24 @@ input[type=range]{width:100%;accent-color:var(--acc);margin:0}
 @media (hover:none){.carr .nav{opacity:.85}}
 .carr .ant{left:8px}.carr .prox{right:8px}
 .carr .cont{position:absolute;bottom:8px;right:8px;background:rgba(0,0,0,.55);color:#fff;font-size:11px;padding:2px 7px;border-radius:999px}
-.carr .play{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);display:none;align-items:center;gap:8px;background:rgba(0,0,0,.72);color:#fff;text-decoration:none;font-size:14px;font-weight:600;padding:10px 16px 10px 12px;border-radius:999px;white-space:nowrap}
+.carr .play{border:0;cursor:pointer;position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);display:none;align-items:center;gap:8px;background:rgba(0,0,0,.72);color:#fff;text-decoration:none;font-size:14px;font-weight:600;padding:10px 16px 10px 12px;border-radius:999px;white-space:nowrap}
 .carr .play span{width:28px;height:28px;border-radius:50%;background:#fff;color:#000;display:grid;place-items:center;font-size:12px;padding-left:2px}
 .carr.tem-video.fim .play{display:flex}
+.desc{font-size:13px;color:var(--ink2);line-height:1.45;white-space:pre-line;overflow-wrap:anywhere}
+.vermais{font-size:12.5px;font-weight:600;color:var(--ink);background:none;border:0;padding:0;cursor:pointer;text-decoration:underline;text-underline-offset:2px}
+.pop .desc{max-height:180px;overflow:auto}
+.video-tela{position:fixed;inset:0;z-index:5000;background:rgba(0,0,0,.85);display:grid;place-items:center;padding:16px}
+.video-caixa{width:min(960px,100%);aspect-ratio:16/9;max-height:85vh}
+.video-caixa iframe{width:100%;height:100%;border:0;border-radius:10px;background:#000}
+.video-fechar{position:absolute;top:14px;right:14px;width:40px;height:40px;border-radius:50%;background:#fff;color:#000;font-size:18px;border:0;cursor:pointer}
+.leaflet-container .marker-icon{width:18px!important;height:18px!important;margin:-9px 0 0 -9px!important;border:2px solid var(--acc)!important;box-shadow:0 0 0 10px rgba(0,0,0,0)}
+.leaflet-container .marker-icon.marker-icon-middle{width:12px!important;height:12px!important;margin:-6px 0 0 -6px!important;opacity:.85}
+@media (pointer:coarse){
+  .leaflet-container .marker-icon{width:30px!important;height:30px!important;margin:-15px 0 0 -15px!important}
+  .leaflet-container .marker-icon.marker-icon-middle{width:22px!important;height:22px!important;margin:-11px 0 0 -11px!important}
+}
+.osm-cinza{filter:grayscale(1) contrast(.92) brightness(1.04)}
+:root[data-theme="dark"] .osm-cinza{filter:invert(1) grayscale(1) brightness(.85) contrast(.9)}
 .carr .sem{position:absolute;inset:0;display:grid;place-items:center;color:var(--ink3);font-size:12px}
 .carr .fonte-tag{position:absolute;top:8px;left:8px;background:var(--bg);color:var(--ink);font-size:11px;font-weight:600;padding:3px 8px;border-radius:999px;display:flex;gap:5px;align-items:center}
 .carr .fonte-tag i{width:7px;height:7px;border-radius:50%}
@@ -282,6 +304,7 @@ dialog p{font-size:13px;color:var(--ink2)}
       <div class="cab-fontes"><h3>Fontes</h3>
         <a class="atualizar" href="https://github.com/amsa2diop/mapa-alugueis/actions/workflows/coleta.yml" target="_blank" rel="noopener"
            title="Abre o GitHub: toque em “Run workflow” e confirme. A coleta leva de 5 a 25 minutos e a página se atualiza sozinha.">⟳ Atualizar agora</a></div>
+      <div class="fontes-todas"><button data-todas="1">Marcar todas</button><button data-todas="0">Desmarcar todas</button></div>
       <div class="fontes" id="fontes"></div>
     </div>
     <div class="grupo">
@@ -446,9 +469,36 @@ const Nuvem = {
     this.refPub = this.db.doc('publico/perimetro');
     this.ok = true;
     firebase.auth().getRedirectResult().catch(() => {});
+    this.voltaDoGoogle();
     firebase.auth().onAuthStateChanged(u => this.entrou(u));
   },
+  // App na tela inicial (iPhone): o login por janela/redirecionamento do Firebase não volta para o app,
+  // porque o app tem armazenamento separado do Safari. Aqui o Google devolve o token direto para esta página.
+  CLIENTE_GOOGLE: '655161408830-qj2ntnn8k0qs3pis2tjoujm965d0unvf.apps.googleusercontent.com',
+  appInstalado(){ return navigator.standalone === true || matchMedia('(display-mode: standalone)').matches; },
+  entrarDireto(){
+    const nonce = Array.from(crypto.getRandomValues(new Uint8Array(16)), b => b.toString(16).padStart(2, '0')).join('');
+    LS.set('login_nonce', nonce);
+    const volta = location.origin + location.pathname;
+    location.href = 'https://accounts.google.com/o/oauth2/v2/auth?' + new URLSearchParams({
+      client_id: this.CLIENTE_GOOGLE, redirect_uri: volta, response_type: 'id_token',
+      scope: 'openid email profile', nonce, prompt: 'select_account'
+    });
+  },
+  async voltaDoGoogle(){
+    if (!location.hash.includes('id_token=')) return;
+    const p = new URLSearchParams(location.hash.slice(1));
+    history.replaceState(null, '', location.pathname + location.search);
+    const tok = p.get('id_token'); if (!tok) return;
+    try {
+      const corpo = JSON.parse(atob(tok.split('.')[1].replace(/-/g, '+').replace(/_/g, '/')));
+      if (corpo.nonce !== LS.get('login_nonce', null)) { toast('Login recusado (verificação não confere)'); return; }
+      LS.set('login_nonce', null);
+      await firebase.auth().signInWithCredential(firebase.auth.GoogleAuthProvider.credential(tok));
+    } catch (e) { toast('Não consegui entrar: ' + (e.code || e.message)); }
+  },
   async entrar(){
+    if (this.appInstalado()) { this.entrarDireto(); return; }
     const prov = new firebase.auth.GoogleAuthProvider();
     prov.setCustomParameters({prompt:'select_account'});
     try { await firebase.auth().signInWithPopup(prov); }
@@ -616,6 +666,53 @@ function ordenar(l){
   return l.sort(f);
 }
 
+/* ================= detalhes sob demanda ================= */
+// o arquivo principal leva 4 fotos e o começo da descrição; o resto fica em det/<n>.json (64 pedaços)
+const DET = {};
+function bigMod64(hex){ let r = 0; for (const ch of hex) r = (r * 16 + parseInt(ch, 16)) % 64; return r; }
+async function detalhe(id){
+  const n = bigMod64(md5(id));
+  if (!DET[n]) DET[n] = fetch(`det/${n}.json?g=${encodeURIComponent(DADOS.gerado || '')}`).then(r => r.ok ? r.json() : {}).catch(() => ({}));
+  return (await DET[n])[id] || {};
+}
+// md5 compacto (domínio público, baseado no algoritmo de Joseph Myers)
+function md5(str){
+  const k = [], s = [7,12,17,22,7,12,17,22,7,12,17,22,7,12,17,22,5,9,14,20,5,9,14,20,5,9,14,20,5,9,14,20,4,11,16,23,4,11,16,23,4,11,16,23,4,11,16,23,6,10,15,21,6,10,15,21,6,10,15,21,6,10,15,21];
+  for (let i = 0; i < 64; i++) k[i] = Math.floor(Math.abs(Math.sin(i + 1)) * 4294967296) | 0;
+  const bytes = new TextEncoder().encode(str), n = bytes.length;
+  const words = new Array((((n + 8) >> 6) + 1) * 16).fill(0);
+  for (let i = 0; i < n; i++) words[i >> 2] |= bytes[i] << ((i % 4) * 8);
+  words[n >> 2] |= 0x80 << ((n % 4) * 8);
+  words[words.length - 2] = n * 8;
+  let a0 = 0x67452301, b0 = 0xefcdab89 | 0, c0 = 0x98badcfe | 0, d0 = 0x10325476;
+  for (let j = 0; j < words.length; j += 16) {
+    let A = a0, B = b0, C = c0, D = d0;
+    for (let i = 0; i < 64; i++) {
+      let F, g;
+      if (i < 16) { F = (B & C) | (~B & D); g = i; }
+      else if (i < 32) { F = (D & B) | (~D & C); g = (5 * i + 1) % 16; }
+      else if (i < 48) { F = B ^ C ^ D; g = (3 * i + 5) % 16; }
+      else { F = C ^ (B | ~D); g = (7 * i) % 16; }
+      const t = D; D = C; C = B;
+      const x = (A + F + k[i] + words[j + g]) | 0;
+      B = (B + ((x << s[i]) | (x >>> (32 - s[i])))) | 0; A = t;
+    }
+    a0 = (a0 + A) | 0; b0 = (b0 + B) | 0; c0 = (c0 + C) | 0; d0 = (d0 + D) | 0;
+  }
+  return [a0, b0, c0, d0].map(v => { let h = ''; for (let i = 0; i < 4; i++) h += ((v >>> (i * 8)) & 255).toString(16).padStart(2, '0'); return h; }).join('');
+}
+// traz as fotos que faltam para um carrossel (na primeira interação)
+async function completarFotos(carr){
+  if (!carr || carr.dataset.completo) return;
+  carr.dataset.completo = '1';
+  const x = porId(carr.dataset.id); if (!x || !x.nf) return;
+  const d = await detalhe(x.id); if (!d.fotos) return;
+  const t = carr.querySelector('.trilho'), vid = t.querySelector('img.vid');
+  const html = d.fotos.slice((x.fotos || []).length).map(f => `<img data-src="${esc(f)}" referrerpolicy="no-referrer" alt="" draggable="false">`).join('');
+  if (vid) vid.insertAdjacentHTML('beforebegin', html); else t.insertAdjacentHTML('beforeend', html);
+  irPara(carr, +carr.dataset.i, false);
+}
+
 /* ================= componentes ================= */
 const ytId = u => { const m = /(?:youtu\.be\/|youtube\.com\/(?:watch\?(?:.*&)?v=|embed\/|shorts\/|live\/))([\w-]{11})/.exec(u || ''); return m ? m[1] : null; };
 function carrossel(x, opts = {}){
@@ -624,14 +721,18 @@ function carrossel(x, opts = {}){
   const tag = `<div class="fonte-tag"><i style="background:${COR[x.fonte]}"></i>${x.fonte}</div>`;
   const estrela = opts.semEstrela ? '' : `<button class="estrela ${fav(x) ? 'on' : ''}" data-a="fav" data-id="${esc(x.id)}" title="Favoritar">${fav(x) ? '★' : '☆'}</button>`;
   if (!fotos.length) return `<div class="carr">${tag}<div class="sem">sem fotos</div>${estrela}</div>`;
-  const imgs = fotos.map((f, i) => i === 0
-    ? `<img src="${esc(f)}" loading="lazy" referrerpolicy="no-referrer" alt="" draggable="false">`
-    : `<img data-src="${esc(f)}" referrerpolicy="no-referrer" alt="" draggable="false">`).join('');
-  const play = yt ? `<a class="play" href="https://www.youtube.com/watch?v=${yt}" target="_blank" rel="noopener"><span>▶</span>Ver vídeo</a>` : '';
-  return `<div class="carr ${yt ? 'tem-video' : ''} ${fotos.length === 1 ? 'fim' : ''}" data-id="${esc(x.id)}" data-i="0">
+  const total = Math.max(fotos.length, (x.nf || 0) + (yt ? 1 : 0));
+  const imgs = fotos.map((f, i) => {
+    const cls = yt && i === fotos.length - 1 ? ' class="vid"' : '';
+    return i === 0
+      ? `<img${cls} src="${esc(f)}" loading="lazy" referrerpolicy="no-referrer" alt="" draggable="false">`
+      : `<img${cls} data-src="${esc(f)}" referrerpolicy="no-referrer" alt="" draggable="false">`;
+  }).join('');
+  const play = yt ? `<button class="play" data-a="video" data-id="${esc(x.id)}"><span>▶</span>Ver vídeo</button>` : '';
+  return `<div class="carr ${yt ? 'tem-video' : ''} ${total === 1 ? 'fim' : ''}" data-id="${esc(x.id)}" data-i="0" data-total="${total}">
     <div class="trilho">${imgs}</div>
     ${tag}${estrela}${play}
-    ${fotos.length > 1 ? `<button class="nav ant" data-a="ant" aria-label="Foto anterior">‹</button><button class="nav prox" data-a="prox" aria-label="Próxima foto">›</button><div class="cont num">1/${fotos.length}</div>` : ''}
+    ${total > 1 ? `<button class="nav ant" data-a="ant" aria-label="Foto anterior">‹</button><button class="nav prox" data-a="prox" aria-label="Próxima foto">›</button><div class="cont num">1/${total}</div>` : ''}
   </div>`;
 }
 function detalhes(x){
@@ -685,10 +786,24 @@ function barra(x, noMapa){
     <button class="bt est ${v ? 'on' : ''}" data-a="visto" data-id="${esc(x.id)}" title="${v ? 'Marcar como não visto' : 'Marcar como visto'}"><span class="i">${ICONE_OLHO_P}</span><span class="t">${v ? 'Visto' : 'Marcar visto'}</span></button>
     <span class="esp"></span>
     ${!noMapa && x.lat != null ? `<button class="bt" data-a="mapa" data-id="${esc(x.id)}" title="Ver no mapa"><span class="i">${IC.mapa}</span><span class="t">Mapa</span></button>` : ''}
-    ${vid ? `<a class="bt" href="${esc(vid)}" target="_blank" rel="noopener" title="${yt ? 'Ver vídeo no YouTube' : 'O vídeo está dentro do anúncio'}"><span class="i">${IC.video}</span><span class="t">Vídeo</span></a>` : ''}
+    ${yt ? `<button class="bt" data-a="video" data-id="${esc(x.id)}" title="Ver vídeo"><span class="i">${IC.video}</span><span class="t">Vídeo</span></button>`
+         : vid ? `<a class="bt" href="${esc(vid)}" target="_blank" rel="noopener" title="O vídeo está dentro do anúncio"><span class="i">${IC.video}</span><span class="t">Vídeo</span></a>` : ''}
     <button class="bt" data-a="copiar" data-id="${esc(x.id)}" title="Copiar link"><span class="i">${IC.copiar}</span><span class="t">Copiar</span></button>
     <a class="bt prim" href="${esc(x.url)}" target="_blank" rel="noopener" title="Abrir o anúncio"><span class="t">Abrir</span><span class="i">${IC.abrir}</span></a>
   </div>`;
+}
+function descricao(x){
+  const txt = x.desc || ((x.fonte === 'OLX' || x.fonte === 'VivaReal') ? x.titulo : '');
+  if (!txt) return '';
+  return `<div class="desc" data-id="${esc(x.id)}">${esc(txt)}${x.desc_mais ? `… <button class="vermais" data-a="desc" data-id="${esc(x.id)}">ver mais</button>` : ''}</div>`;
+}
+async function alternarDescricao(b, x){
+  const box = b.closest('.desc');
+  if (box.dataset.aberta) { box.outerHTML = descricao(x); return; }
+  b.textContent = 'carregando…';
+  const d = await detalhe(x.id);
+  box.dataset.aberta = '1';
+  box.innerHTML = `${esc(d.descricao || x.desc)} <button class="vermais" data-a="desc" data-id="${esc(x.id)}">ver menos</button>`;
 }
 function card(x){
   return `<article class="card ${visto(x) ? 'visto' : ''}">
@@ -697,8 +812,9 @@ function card(x){
       <div class="preco"><b class="num">${brl(x.total)}</b><small>aluguel + cond.</small></div>
       <div class="quebra num">Aluguel ${brl(x.aluguel)} · Cond. ${x.condominio ? brl(x.condominio) : '—'}${x.iptu ? ' · IPTU ' + brl(x.iptu) : ''}</div>
       <div class="meta">${esc(detalhes(x))}${x.area ? ' · ' + brl(x.total / x.area) + '/m²' : ''}</div>
-      <div class="local">${esc([x.bairro, x.cidade].filter(Boolean).join(', '))}</div>
+      <div class="local">${esc([x.endereco, x.bairro, x.cidade].filter(Boolean).join(', '))}</div>
       <div class="meta">${quandoTxt(x)}${x.anunciante ? ' · ' + esc(x.anunciante) : ''}</div>
+      ${descricao(x)}
       ${tambem(x)}
       <div class="selos">${selos(x)}</div>
       ${barra(x)}
@@ -724,6 +840,7 @@ function popup(x){
       <div class="meta">${esc(detalhes(x))}${x.area ? ' · ' + brl(x.total / x.area) + '/m²' : ''}</div>
       <div class="local">${esc([x.endereco, x.bairro, x.cidade].filter(Boolean).join(', '))}</div>
       <div class="meta">${quandoTxt(x)}${x.anunciante ? ' · ' + esc(x.anunciante) : ''}</div>
+      ${descricao(x)}
       ${tambem(x)}
       <div class="selos">${selos(x)}</div>
       ${barra(x, true)}
@@ -733,7 +850,7 @@ function popup(x){
 
 /* ================= mapa ================= */
 const TOQUE = matchMedia('(pointer: coarse)').matches;
-const mapa = L.map('mapa', {zoomControl:false, maxZoom:18, zoomSnap:0.25, doubleClickZoom: !TOQUE}).setView([-22.935, -43.17], 13);
+const mapa = L.map('mapa', {zoomControl:false, maxZoom:20, zoomSnap:0.25, doubleClickZoom: !TOQUE}).setView([-22.935, -43.17], 13);
 L.control.zoom({position:'bottomright'}).addTo(mapa);
 (function gestosDeToque(){
   const el = mapa.getContainer();
@@ -775,9 +892,14 @@ let base = null, rotulos = null;
 function trocarMapaBase(){
   if (base) mapa.removeLayer(base);
   if (rotulos) mapa.removeLayer(rotulos);
+  // até o zoom 16: mapa cinza da Esri (limpo); do 17 em diante: OpenStreetMap em tons de cinza, com ruas e números
   const t = escuro() ? 'Dark' : 'Light';
-  base = L.tileLayer(`https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_${t}_Gray_Base/MapServer/tile/{z}/{y}/{x}`, {attribution:'Esri, OpenStreetMap', maxZoom:18, maxNativeZoom:16}).addTo(mapa);
-  rotulos = L.tileLayer(`https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_${t}_Gray_Reference/MapServer/tile/{z}/{y}/{x}`, {maxZoom:18, maxNativeZoom:16, pane:'overlayPane'}).addTo(mapa);
+  base = L.layerGroup([
+    L.tileLayer(`https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_${t}_Gray_Base/MapServer/tile/{z}/{y}/{x}`, {attribution:'Esri, © OpenStreetMap', maxZoom:16}),
+    L.tileLayer(`https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_${t}_Gray_Reference/MapServer/tile/{z}/{y}/{x}`, {maxZoom:16, pane:'overlayPane'}),
+    L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {attribution:'© OpenStreetMap', minZoom:17, maxZoom:20, maxNativeZoom:19, className:'osm-cinza'})
+  ]).addTo(mapa);
+  rotulos = null;
 }
 // agrupamento do Leaflet.markercluster: agrupa o que está próximo em qualquer zoom;
 // no zoom máximo, pinos no mesmo endereço se abrem em leque ao clicar
@@ -1039,6 +1161,11 @@ document.querySelectorAll('.duplo').forEach(box => {
   i1.addEventListener('input', mexe); i2.addEventListener('input', mexe);
   i1.addEventListener('change', redesenhar); i2.addEventListener('change', redesenhar);
 });
+document.querySelector('.fontes-todas').addEventListener('click', e => {
+  const b = e.target.closest('button[data-todas]'); if (!b) return;
+  st.fontes = b.dataset.todas === '1' ? FONTES.slice() : [];
+  desenharFontes(); redesenhar();
+});
 $('#fPerim').checked = st.perim;
 $('#fPerim').addEventListener('change', e => { st.perim = e.target.checked; redesenhar(); });
 $('#fontes').addEventListener('change', e => { const f = e.target.dataset.f; if (!f) return; st.fontes = e.target.checked ? [...new Set([...st.fontes, f])] : st.fontes.filter(x => x !== f); redesenhar(); });
@@ -1049,6 +1176,17 @@ $('#abas').addEventListener('click', e => { const b = e.target.closest('button')
 $('#btnFiltros').onclick = () => $('#painel').classList.toggle('aberto');
 function fecharPainelCel(){ $('#painel').classList.remove('aberto'); }
 
+function abrirVideo(yt){
+  if (!yt) return;
+  fecharVideo();
+  document.body.insertAdjacentHTML('beforeend', `<div class="video-tela" id="videoTela">
+    <div class="video-caixa"><iframe src="https://www.youtube-nocookie.com/embed/${yt}?autoplay=1&playsinline=1&rel=0" allow="autoplay; encrypted-media; picture-in-picture; fullscreen" allowfullscreen title="Vídeo do anúncio"></iframe></div>
+    <button class="video-fechar" aria-label="Fechar vídeo">✕</button></div>`);
+  const t = $('#videoTela');
+  t.addEventListener('click', e => { if (!e.target.closest('iframe')) fecharVideo(); });
+}
+function fecharVideo(){ const t = $('#videoTela'); if (t) t.remove(); }
+document.addEventListener('keydown', e => { if (e.key === 'Escape') fecharVideo(); });
 function verNoMapa(x){
   if (x.lat == null) return;
   trocarVista('mapa');
@@ -1080,7 +1218,7 @@ function irPara(carr, i, animar = true){
   t.style.transition = animar ? '' : 'none';
   t.style.transform = `translateX(${-i * 100}%)`;
   carregarVizinhas(carr, i);
-  const c = carr.querySelector('.cont'); if (c) c.textContent = `${i + 1}/${n}`;
+  const c = carr.querySelector('.cont'); if (c) c.textContent = `${i + 1}/${Math.max(n, +carr.dataset.total || 0)}`;
   carr.classList.toggle('inicio', i === 0); carr.classList.toggle('fim', i === n - 1);
 }
 function trocarFoto(carr, passo){
@@ -1092,10 +1230,15 @@ function trocarFoto(carr, passo){
 document.addEventListener('click', e => {
   const b = e.target.closest('[data-a]'); if (!b) return;
   const a = b.dataset.a;
-  if (a === 'ant' || a === 'prox') { e.preventDefault(); e.stopPropagation(); trocarFoto(b.closest('.carr'), a === 'ant' ? -1 : 1); return; }
+  if (a === 'ant' || a === 'prox') {
+    e.preventDefault(); e.stopPropagation();
+    const carr = b.closest('.carr'); completarFotos(carr); trocarFoto(carr, a === 'ant' ? -1 : 1); return;
+  }
   const id = b.dataset.id; const x = porId(id); if (!x) return;
   if (a === 'copiar') { copiar(x.url); return; }
   if (a === 'mapa') { verNoMapa(x); return; }
+  if (a === 'video') { e.stopPropagation(); abrirVideo(ytId(x.video)); return; }
+  if (a === 'desc') { e.stopPropagation(); alternarDescricao(b, x); return; }
   if (a === 'fav' || a === 'visto') {
     e.stopPropagation();
     marcar(a === 'fav' ? 'favoritos' : 'vistos', id);
@@ -1108,6 +1251,7 @@ document.addEventListener('pointerdown', e => {
   if (!c || e.target.closest('button, a') || (e.pointerType === 'mouse' && e.button !== 0)) return;
   if (c.closest('.leaflet-popup')) e.stopPropagation();   // não arrasta o mapa junto
   arraste = {c, x: e.clientX, y: e.clientY, w: c.clientWidth, i: +c.dataset.i, dx: 0, ativo: false, id: e.pointerId, t: performance.now()};
+  completarFotos(c);
 }, true);
 document.addEventListener('pointermove', e => {
   const a = arraste; if (!a || e.pointerId !== a.id) return;

@@ -27,7 +27,7 @@ env:
 jobs:
   coleta:
     runs-on: ubuntu-latest
-    timeout-minutes: 58
+    timeout-minutes: 110
     concurrency:
       group: coleta
       cancel-in-progress: false
