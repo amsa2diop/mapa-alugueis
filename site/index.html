@@ -5,9 +5,9 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-title" content="Aluguéis">
+<meta name="apple-mobile-web-app-title" content="AMSA imóveis">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
-<title>Aluguéis Rio · Niterói</title>
+<title>AMSA imóveis</title>
 <script>
   // tema antes de pintar: auto = escuro das 18h às 6h
   (function(){ var m = 'auto'; try { m = JSON.parse(localStorage.getItem('tema')) || 'auto'; } catch(e){}
@@ -24,13 +24,13 @@
 :root{
   --bg:#ffffff; --bg2:#f6f6f4; --ink:#141414; --ink2:#5f5f5b; --ink3:#9a9a95; --line:#e8e8e4;
   --acc:#141414; --acc-ink:#ffffff; --star:#e0a100; --ok:#2f7d55; --warn:#b54708;
-  --qa:#4263eb; --vr:#e8590c; --olx:#8e44ad; --cnm:#0b7285; --iw:#c2255c; --imob:#5c940d; --perim:#2f7d55; --clu:#141414; --clu-ink:#fff;
+  --qa:#4263eb; --vr:#e8590c; --olx:#8e44ad; --cnm:#0b7285; --iw:#c2255c; --imob:#5c940d; --loft:#b08900; --perim:#2f7d55; --clu:#141414; --clu-ink:#fff;
   --r:10px;
 }
 :root[data-theme="dark"]{
   --bg:#121212; --bg2:#1b1b1a; --ink:#f0f0ec; --ink2:#a9a9a3; --ink3:#73736e; --line:#2b2b29;
   --acc:#f0f0ec; --acc-ink:#121212; --star:#f5b700; --ok:#5cc28d; --warn:#f79009;
-  --qa:#748ffc; --vr:#ff8a4c; --olx:#c084fc; --cnm:#3bc9db; --iw:#f06595; --imob:#94d82d; --perim:#5cc28d; --clu:#f0f0ec; --clu-ink:#121212;
+  --qa:#748ffc; --vr:#ff8a4c; --olx:#c084fc; --cnm:#3bc9db; --iw:#f06595; --imob:#94d82d; --loft:#f2c94c; --perim:#5cc28d; --clu:#f0f0ec; --clu-ink:#121212;
 }
 *{box-sizing:border-box}
 html,body{margin:0;height:100%;background:var(--bg);color:var(--ink);font:14px/1.45 Inter,system-ui,-apple-system,"Segoe UI",sans-serif;-webkit-font-smoothing:antialiased}
@@ -259,7 +259,7 @@ dialog p{font-size:13px;color:var(--ink2)}
 </head>
 <body>
 <div class="top">
-  <div class="marca">Aluguéis <span>Rio · Niterói</span></div>
+  <div class="marca">AMSA <span>imóveis</span></div>
   <div class="abas" id="abas"><button data-v="mapa" class="on">Mapa</button><button data-v="lista">Lista</button></div>
   <div class="esp"></div>
   <div class="status" id="status">carregando…</div>
@@ -366,8 +366,8 @@ dialog p{font-size:13px;color:var(--ink2)}
 <script>
 "use strict";
 const $ = s => document.querySelector(s);
-const COR = {QuintoAndar:'var(--qa)', VivaReal:'var(--vr)', OLX:'var(--olx)', 'Chaves na Mão':'var(--cnm)', Imovelweb:'var(--iw)', 'Imobiliárias':'var(--imob)'};
-const FONTES = ['QuintoAndar','VivaReal','OLX','Chaves na Mão','Imovelweb','Imobiliárias'];
+const COR = {QuintoAndar:'var(--qa)', VivaReal:'var(--vr)', OLX:'var(--olx)', 'Chaves na Mão':'var(--cnm)', Imovelweb:'var(--iw)', 'Imobiliárias':'var(--imob)', Loft:'var(--loft)'};
+const FONTES = ['QuintoAndar','VivaReal','OLX','Chaves na Mão','Imovelweb','Imobiliárias','Loft'];
 const brl = v => 'R$ ' + Math.round(v || 0).toLocaleString('pt-BR');
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const horas = iso => (Date.now() - new Date(iso).getTime()) / 36e5;
@@ -391,6 +391,9 @@ let CONFIG = {};
 let MEM = LS.get('memoria', {favoritos:{}, vistos:{}, perimetro:null, perimetro_t:0});
 MEM.favoritos ||= {}; MEM.vistos ||= {};
 const st0 = LS.get('filtros3', {}); if (st0.fontes && !st0.fontesV2) { st0.fontes = [...new Set([...st0.fontes, 'Chaves na Mão', 'Imovelweb', 'Imobiliárias'])]; st0.fontesV2 = 1; LS.set('filtros3', st0); }
+// fonte nova (Loft) entra ligada para quem já tinha filtros salvos
+function fontesNovas(o){ if (o && o.fontes && !o.fontesV3) { o.fontes = [...new Set([...o.fontes, 'Loft'])]; o.fontesV3 = 1; } return o; }
+fontesNovas(st0); LS.set('filtros3', st0);
 const st = Object.assign({faixas:{total:[0,3000], aluguel:[0,15000], condominio:[0,4000], area:[40,300]}, area:40, quartos:0, novo:0, soFav:false, visto:'todos', fontes:FONTES.slice(), perim:true, ordem:'novo', vista:'mapa', tipo:'todos', endereco:'todos'}, LS.get('filtros3', {}));
 if (st.vista === 'sem') { st.vista = 'lista'; st.endereco = 'sem'; }
 if (st.mostrar !== undefined) { st.soFav = st.mostrar === 'fav'; st.visto = st.mostrar === 'nao' ? 'nao' : st.mostrar === 'vistos' ? 'vistos' : 'todos'; delete st.mostrar; }
@@ -445,7 +448,7 @@ function guardarFiltros(){
 }
 function aplicarPrefsDaNuvem(){
   if (!MEM.filtros || (MEM.filtros_t || 0) <= prefsAplicadas) return false;
-  const p = MEM.filtros;
+  const p = fontesNovas(MEM.filtros);
   for (const k of Object.keys(p)) if (k !== 'tema') st[k] = p[k];
   if (p.tema && p.tema !== modoTema) { modoTema = p.tema; LS.set('tema', modoTema); aplicarTema(); }
   prefsAplicadas = MEM.filtros_t; LS.set('prefs_t', prefsAplicadas); LS.set('filtros3', st);
@@ -533,6 +536,7 @@ const Nuvem = {
         if (!editando) { desenharPerimetro(); desenharAreas(); redesenhar(); }
       }, () => this.marcar('err', 'sem acesso', u.photoURL));
       LS.set('memoria', MEM);
+      this.registrarUso();
       aplicarPrefsDaNuvem();
       desenharPerimetro(); desenharAreas(); redesenhar();
       this.marcar('ok', (u.displayName || u.email || 'conectado').split(' ')[0], u.photoURL);
@@ -546,6 +550,13 @@ const Nuvem = {
     filtros: JSON.stringify(m.filtros || null), filtros_t: m.filtros_t || 0}; },
   ler(d){ let p = null, f = null; try { p = JSON.parse(d.perimetro || 'null'); } catch {} try { f = JSON.parse(d.filtros || 'null'); } catch {}
     return {favoritos: d.favoritos || {}, vistos: d.vistos || {}, perimetro: p, perimetro_t: d.perimetro_t || 0, filtros: f, filtros_t: d.filtros_t || 0}; },
+  // marca que o site foi usado (no máximo uma vez por hora); a coleta automática pausa após 7 dias sem uso
+  async registrarUso(){
+    if (!this.user) return;
+    const agora = Date.now();
+    if (agora - LS.get('uso_t', 0) < 3600e3) return;
+    try { await this.refPub.set({visto: agora}, {merge:true}); LS.set('uso_t', agora); } catch (e) {}
+  },
   async prefs(){
     if (!this.user) return;
     try { await this.ref.set({filtros: JSON.stringify(MEM.filtros || null), filtros_t: MEM.filtros_t || 0}, {merge:true}); }
@@ -1075,7 +1086,7 @@ function trocarVista(v){
   guardarFiltros();
 }
 // fontes que não rodam toda hora: Imobiliárias a cada 6 h, Imovelweb uma vez por dia
-const CICLO_H = {'Imobiliárias': 6, 'Imovelweb': 24};
+const CICLO_H = {'Imobiliárias': 6, 'Imovelweb': 24, 'Loft': 3};
 // a coleta pausa de 0h às 8h (horário de Brasília): essas horas não contam como atraso
 function horasAtivas(iso){
   const fim = Date.now(); let t = new Date(iso).getTime(), h = 0;
@@ -1305,7 +1316,7 @@ async function iniciar(){
   Nuvem.iniciar();
   setInterval(carregarDados, 10 * 60 * 1000);
   // ao voltar para a aba (ex.: depois de disparar a coleta no GitHub), busca os dados de novo
-  document.addEventListener('visibilitychange', () => { if (!document.hidden) carregarDados(); });
+  document.addEventListener('visibilitychange', () => { if (!document.hidden) { carregarDados(); Nuvem.registrarUso(); } });
 }
 iniciar();
 </script>

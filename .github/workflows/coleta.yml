@@ -31,6 +31,8 @@ jobs:
     concurrency:
       group: coleta
       cancel-in-progress: false
+    outputs:
+      parar: ${{ steps.precisa.outputs.parar }}
     env:
       PLAYWRIGHT_BROWSERS_PATH: /home/runner/.cache/ms-playwright
       PYTHONUNBUFFERED: "1"
@@ -76,9 +78,20 @@ jobs:
           except Exception:
               idade = 999
           automatica = ev == "schedule" or cadeia
-          # a pessoa apertando "Run workflow" sempre coleta; as automáticas respeitam a madrugada e não repetem
-          sim = (not automatica) or (not madrugada and idade > 40)
+          # sem uso do site há 7 dias (o site grava "visto" ao ser aberto com login): as automáticas param
+          parado = False
+          try:
+              import urllib.request
+              u = "https://firestore.googleapis.com/v1/projects/mapa-alugueis/databases/(default)/documents/publico/perimetro"
+              f = json.load(urllib.request.urlopen(u, timeout=20)).get("fields", {})
+              visto = int((f.get("visto") or {}).get("integerValue") or 0)
+              parado = visto > 0 and (datetime.now(timezone.utc).timestamp() * 1000 - visto) > 7 * 86400e3
+          except Exception:
+              pass
+          # a pessoa apertando "Run workflow" sempre coleta; as automáticas respeitam a madrugada, a pausa e não repetem
+          sim = (not automatica) or (not madrugada and not parado and idade > 40)
           print("sim=" + ("true" if sim else "false"))
+          print("parar=" + ("true" if automatica and parado else "false"))
           PY
       - name: Navegador para OLX e Imovelweb
         if: steps.precisa.outputs.sim == 'true'
@@ -101,7 +114,8 @@ jobs:
     # espera até a próxima hh:12 (entre 8h e 23h) e dispara a próxima coleta.
     # Só um relógio fica vivo: um novo cancela o anterior.
     needs: coleta
-    if: always()
+    # pausado por falta de uso: a corrente para; o schedule (a cada 30 min) a retoma quando o site voltar a ser aberto
+    if: always() && needs.coleta.outputs.parar != 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 350
     concurrency:

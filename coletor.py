@@ -908,6 +908,66 @@ def coletar_selfspin():
     log(f"Self Spin: {len(pontos)} imóveis no site, {len(alvo)} no perímetro até R$ {TOTAL_MAX}, {len(itens)} apartamentos")
     return itens
 
+# ---------------- Loft (marketplace; volume pequeno no RJ) ----------------
+LOFT = "https://loft.com.br"
+LOFT_HORAS = 3
+LOFT_BUSCAS = [(t, c, nome) for t in ("apartamentos", "casas")
+               for c, nome in (("rj/rio-de-janeiro", "Rio de Janeiro"), ("rj/niteroi", "Niterói"))]
+
+def loft_pagina(url):
+    h = _get_html(url)
+    m = re.search(r'<script id="__NEXT_DATA__"[^>]*>(.*?)</script>', h, re.S)
+    if not m:
+        return [], 0
+    for q in json.loads(m.group(1))["props"]["pageProps"]["dehydratedState"]["queries"]:
+        if q["queryKey"] and q["queryKey"][0] == "Listing:Search":
+            d = q["state"].get("data") or {}
+            return [x.get("listing") or {} for x in d.get("listings") or []], (d.get("pagination") or {}).get("totalPages") or 0
+    return [], 0
+
+def loft_item(L, cidade):
+    if L.get("transactionType") != "FOR_RENT" or (L.get("rentalPeriod") or "MONTHLY") != "MONTHLY":
+        return None
+    aluguel = num(L.get("rentalPrice"))
+    tipo = {"apartment": "Apartamento", "house": "Casa"}.get(L.get("homeType")) or tipo_imovel(L.get("propertyType") or "")
+    if not aluguel or not tipo:
+        return None
+    a = L.get("address") or {}
+    geo = L.get("_geoloc") or {}
+    condo = num(L.get("complexFee"))
+    return {
+        "id": f"loft-{L['id']}", "fonte": "Loft", "tipo": tipo, "anunciante": L.get("agencyName") or "",
+        "url": f"{LOFT}/imovel/{'casa' if tipo == 'Casa' else 'apartamento'}/{L['id']}?tipoTransacao=aluguel",
+        "lat": num(geo.get("lat")) or num(a.get("lat")) or None, "lng": num(geo.get("lng")) or num(a.get("lng")) or None,
+        "aprox": not a.get("number"),
+        "aluguel": aluguel, "condominio": condo, "iptu": round(num(L.get("propertyTax"))),
+        "total": aluguel + condo, "area": num(L.get("area")), "quartos": int(num(L.get("bedrooms"))),
+        "banheiros": int(num(L.get("restrooms"))), "vagas": int(num(L.get("parkingSpots"))),
+        "bairro": a.get("neighborhood") or "", "cidade": cidade,
+        "endereco": " ".join(str(p) for p in (a.get("streetName"), a.get("number")) if p),
+        "fotos": [f"https://content.loft.com.br/homes/{L['id']}/mobile_{f}" for f in L.get("photos") or []][:MAX_FOTOS],
+        "titulo": "", "descricao": (L.get("description") or "").strip(), "criado": L.get("createdAt"),
+        "mobiliado": "FURNISHED" in (L.get("unitFeatures") or []),
+    }
+
+def coletar_loft():
+    itens, paginas = {}, 0
+    for tipo, cid, nome in LOFT_BUSCAS:
+        pag, total = 1, 1
+        while pag <= max(total, 1) and pag <= 30:
+            lst, total = loft_pagina(f"{LOFT}/aluguel/{tipo}/{cid}" + (f"?pagina={pag}" if pag > 1 else ""))
+            paginas += 1
+            for L in lst:
+                it = loft_item(L, nome)
+                if it:
+                    itens[it["id"]] = it
+            if not lst:
+                break
+            pag += 1
+            time.sleep(random.uniform(1.0, 2.0))
+    log(f"Loft: {paginas} páginas, {len(itens)} anúncios")
+    return list(itens.values())
+
 # ---------------- consolidação ----------------
 def passa_filtro(it):
     # sem metragem informada não é motivo para tirar: só sai quem declara área abaixo do mínimo
@@ -1078,7 +1138,7 @@ def no_perimetro(lat, lng, perim):
                 return True
     return False
 
-PRIORIDADE = {"QuintoAndar": 0, "VivaReal": 1, "Chaves na Mão": 2, "Imobiliárias": 3, "Imovelweb": 4, "OLX": 5}
+PRIORIDADE = {"QuintoAndar": 0, "VivaReal": 1, "Chaves na Mão": 2, "Imobiliárias": 3, "Loft": 4, "Imovelweb": 5, "OLX": 6}
 BAIRROS_PERIM = {sem_acento(b.replace("-", " ")) for bs in BAIRROS_BUSCA.values() for b in bs}
 
 def agrupar_repetidos(lista):
@@ -1327,6 +1387,15 @@ def main():
             registra("Imobiliárias", True, n, ("sem resposta: " + ", ".join(falhas)) if falhas else "")
         except Exception as e:
             log("Imobiliárias falhou:", repr(e)); registra("Imobiliárias", False, obs=str(e)[:200])
+
+    # Loft: a cada 3 h (volume pequeno no RJ)
+    ult = fontes.get("Loft", {}).get("sucesso")
+    if not ult or t - datetime.fromisoformat(ult) > timedelta(hours=LOFT_HORAS) or "--completo" in sys.argv:
+        try:
+            n = mesclar(estado, coletar_loft(), t, fonte_completa="Loft")
+            registra("Loft", True, n)
+        except Exception as e:
+            log("Loft falhou:", repr(e)); registra("Loft", False, obs=str(e)[:200])
 
     # Imovelweb: uma varredura por dia (bloqueia robôs; melhor esforço)
     if "--sem-imovelweb" not in sys.argv:
