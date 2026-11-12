@@ -216,6 +216,7 @@ def vr_item(x):
         "bairro": a.get("neighborhood") or "", "cidade": a.get("city") or "",
         "endereco": " ".join(v for v in [a.get("street"), a.get("streetNumber")] if v),
         "fotos": fotos, "titulo": L.get("title") or "", "criado": L.get("createdAt"),
+        "video": next((m["url"] for m in (x.get("medias") or []) if m.get("type") in ("VIDEO", "VIDEO_TOUR") and m.get("url")), None),
     }
 
 def vr_faixa(cidade, locid, pmin, pmax, saida):
@@ -344,6 +345,7 @@ def olx_item(a):
         "vagas": int(num(props.get("garage_spaces"))), "bairro": bairro, "cidade": cidade, "endereco": "",
         "fotos": fotos, "titulo": (a.get("subject") or "")[:140],
         "criado": iso(datetime.fromtimestamp(data, timezone.utc)) if isinstance(data, (int, float)) else None,
+        "video": a.get("url") if a.get("videoCount") else None,
     }
 
 def geocodificar(bairro, cidade, cache):
@@ -539,6 +541,7 @@ def cnm_item(o, ponto, cidade):
         "endereco": (_d(loc.get("street")).get("name") or "") if publico else "",
         "fotos": [CNM_IMG + foto] if foto else [], "titulo": (o.get("title") or "")[:140],
         "anunciante": (_d(o.get("publisher")).get("name") or "").strip(),
+        "video": _d(o.get("media")).get("videoUrl") or None,
     }
 
 def coletar_chavesnamao():
@@ -718,6 +721,7 @@ def kenlo_item(o, imob, site):
         "vagas": int(_faixa(o.get("garages"))), "bairro": o.get("neighborhood_display") or o.get("neighborhood") or "",
         "cidade": o.get("city") or "", "endereco": "", "fotos": fotos[:MAX_FOTOS],
         "titulo": (o.get("heading1") or o.get("website_title") or "")[:140],
+        "video": (o.get("video_url") or "").strip() or None,
     }
 
 def coletar_imobiliarias():
@@ -789,6 +793,7 @@ def selfspin_item(v):
         "vagas": int(num(v.get("imv_qtd_vagas"))), "bairro": v.get("imv_bairro") or "", "cidade": v.get("imv_cidade") or "Niterói",
         "endereco": "" if oculto else " ".join(str(p) for p in (v.get("imv_endereco"), v.get("imv_end_numero")) if p),
         "fotos": fotos[:MAX_FOTOS], "titulo": (v.get("imv_titulo") or "")[:140], "criado": v.get("createdAt"),
+        "video": (v.get("imv_videourl") or "").strip() or None,
     }
 
 def coletar_selfspin():
@@ -819,6 +824,59 @@ def passa_filtro(it):
         return False
     return (0 < it["total"] <= TOTAL_MAX and (not it["area"] or it["area"] >= AREA_MIN)
             and sem_acento(it.get("cidade")) in CIDADES_OK)
+
+SUMIDOS = DADOS / "sumidos.json"   # anúncios que saíram do ar (para reconhecer quando voltam com outro id)
+
+def _assinatura(v):
+    """Mesmo imóvel re-anunciado: mesma fonte, tipo, quartos, área, condomínio e bairro."""
+    if not v.get("area") or not v.get("quartos"):
+        return None
+    return "|".join([v["fonte"], v.get("tipo") or "", str(v["quartos"]), str(round(v["area"])),
+                     str(round((v.get("condominio") or 0) / 10)), sem_acento(v.get("bairro") or "")])
+
+def _mesmo_imovel(a, b):
+    if abs((a.get("aluguel") or 0) - (b.get("aluguel") or 0)) > 0.12 * max(a.get("aluguel") or 1, 1):
+        return False
+    if a.get("lat") and b.get("lat") and not a.get("aprox") and not b.get("aprox"):
+        if abs(a["lat"] - b["lat"]) > 0.0015 or abs(a["lng"] - b["lng"]) > 0.0015:
+            return False
+    return True
+
+def registrar_sumidos(estado_antes, estado, t):
+    sum_ = carregar(SUMIDOS, {})
+    for k, v in estado_antes.items():
+        if k not in estado:
+            sum_[k] = {c: v.get(c) for c in ("fonte", "tipo", "quartos", "area", "condominio", "aluguel", "bairro",
+                                              "lat", "lng", "aprox", "primeiro", "antes")}
+            sum_[k]["sumiu"] = iso(t)
+    lim = t - timedelta(days=90)
+    sum_ = {k: v for k, v in sum_.items() if datetime.fromisoformat(v["sumiu"]) > lim}
+    salvar(SUMIDOS, sum_)
+    return sum_
+
+def ligar_reanuncios(lista, estado, ativos):
+    """Liga cada anúncio ativo aos ids antigos do mesmo imóvel (que saíram do ar ou expiraram),
+    para o favorito/visto seguir o anúncio quando ele é republicado."""
+    pool = {}
+    for k, v in list(carregar(SUMIDOS, {}).items()) + [(k, v) for k, v in estado.items() if k not in ativos]:
+        a = _assinatura(v)
+        if a:
+            pool.setdefault(a, []).append((k, v))
+    n = 0
+    for v in lista:
+        a = _assinatura(v)
+        if not a or a not in pool:
+            continue
+        antes = set()
+        for k, o in pool[a]:
+            if k != v["id"] and _mesmo_imovel(v, o) and (o.get("primeiro") or "") <= (v.get("primeiro") or "9"):
+                antes.add(k)
+                antes.update(o.get("antes") or [])
+        antes.discard(v["id"])
+        if antes:
+            v["antes"] = sorted(antes)
+            n += 1
+    log(f"Re-anúncios reconhecidos: {n}")
 
 def mesclar(estado, itens, t, fonte_completa=None):
     """Atualiza o estado. Se fonte_completa, marca como removidos os que não vieram."""
@@ -976,10 +1034,16 @@ def gerar_site(estado, meta):
         if v.get("lat") is None:  # sem endereço: entra se o bairro é do perímetro (ou não foi informado)
             return not v.get("bairro") or sem_acento(v["bairro"]) in BAIRROS_PERIM
         return no_perimetro(v["lat"], v["lng"], perim)
-    lista = agrupar_repetidos([dict(v) for v in estado.values() if entra(v)])
+    ativos = {k for k, v in estado.items() if entra(v)}
+    lista = [dict(estado[k]) for k in ativos]
+    try:
+        ligar_reanuncios(lista, estado, ativos)
+    except Exception as e:
+        log("Re-anúncios: falhou:", repr(e)[:150])
+    lista = agrupar_repetidos(lista)
     campos = ["id", "fonte", "url", "lat", "lng", "aprox", "aluguel", "condominio", "iptu", "total", "area",
               "quartos", "banheiros", "vagas", "bairro", "cidade", "endereco", "fotos", "titulo", "primeiro",
-              "criado", "inicial", "total_anterior", "mobiliado", "anunciante", "tambem", "tipo"]
+              "criado", "inicial", "total_anterior", "mobiliado", "anunciante", "tambem", "tipo", "video", "antes"]
     enxuto = [{k: v[k] for k in campos if v.get(k) not in (None, "", False, [])} for v in lista]
     log(f"Repetidos entre sites juntados: {sum(len(v.get('tambem', [])) for v in lista)}")
     SITE.mkdir(exist_ok=True)
@@ -1052,6 +1116,8 @@ def bairros_do_perimetro(estado):
 def main():
     t = agora()
     estado = carregar(ESTADO, {})
+    estado_antes = {k: {c: v.get(c) for c in ("fonte", "tipo", "quartos", "area", "condominio", "aluguel", "bairro",
+                                              "lat", "lng", "aprox", "primeiro", "antes")} for k, v in estado.items()}
     meta = carregar(META, {"fontes": {}})
     fontes = meta.setdefault("fontes", {})
 
@@ -1153,6 +1219,10 @@ def main():
             except Exception as e:
                 log("Imovelweb falhou:", repr(e)); registra("Imovelweb", False, obs=str(e)[:200])
 
+    try:
+        registrar_sumidos(estado_antes, estado, t)
+    except Exception as e:
+        log("Registro de sumidos falhou:", repr(e)[:150])
     salvar(ESTADO, estado)
     salvar(META, meta)
     gerar_site(estado, meta)

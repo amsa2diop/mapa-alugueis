@@ -127,6 +127,9 @@ input[type=range]{width:100%;accent-color:var(--acc);margin:0}
 @media (hover:none){.carr .nav{opacity:.85}}
 .carr .ant{left:8px}.carr .prox{right:8px}
 .carr .cont{position:absolute;bottom:8px;right:8px;background:rgba(0,0,0,.55);color:#fff;font-size:11px;padding:2px 7px;border-radius:999px}
+.carr .play{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);display:none;align-items:center;gap:8px;background:rgba(0,0,0,.72);color:#fff;text-decoration:none;font-size:14px;font-weight:600;padding:10px 16px 10px 12px;border-radius:999px;white-space:nowrap}
+.carr .play span{width:28px;height:28px;border-radius:50%;background:#fff;color:#000;display:grid;place-items:center;font-size:12px;padding-left:2px}
+.carr.tem-video.fim .play{display:flex}
 .carr .sem{position:absolute;inset:0;display:grid;place-items:center;color:var(--ink3);font-size:12px}
 .carr .fonte-tag{position:absolute;top:8px;left:8px;background:var(--bg);color:var(--ink);font-size:11px;font-weight:600;padding:3px 8px;border-radius:999px;display:flex;gap:5px;align-items:center}
 .carr .fonte-tag i{width:7px;height:7px;border-radius:50%}
@@ -152,8 +155,29 @@ input[type=range]{width:100%;accent-color:var(--acc);margin:0}
 .ic:hover{border-color:var(--ink3);color:var(--ink)}
 .ic.on{background:var(--acc);border-color:var(--acc);color:var(--acc-ink)}
 .ic.on.fav{background:transparent;border-color:var(--star);color:var(--star)}
-.card.visto .info,.card.visto .carr{opacity:.55}
-.card.visto .icones{opacity:1}
+.card.visto .carr,.card.visto .info>:not(.barra){opacity:.55}
+.card.visto:hover .info>*{opacity:1}
+.info,.pop .corpo{container-type:inline-size}
+.barra{display:flex;align-items:center;gap:6px;margin-top:8px;padding-top:10px;border-top:1px solid var(--line)}
+.barra .esp{flex:1}
+.bt{flex:none;height:34px;min-width:34px;padding:0 10px;border-radius:999px;border:1px solid var(--line);background:none;color:var(--ink2);display:inline-flex;align-items:center;justify-content:center;gap:6px;font-size:12.5px;font-weight:500;text-decoration:none;white-space:nowrap;cursor:pointer}
+.bt:hover{border-color:var(--ink3);color:var(--ink)}
+.bt .i{display:grid;place-items:center;font-size:16px;line-height:1}
+.bt .i svg{width:15px;height:15px}
+.bt.on{background:var(--acc);border-color:var(--acc);color:var(--acc-ink)}
+.bt.on.fav{background:none;border-color:var(--star);color:var(--star)}
+.bt.prim{background:var(--acc);border-color:var(--acc);color:var(--acc-ink)}
+/* cartão estreito (celular, popup): ações viram só ícones; "Abrir" mantém o texto */
+@container (max-width: 440px){
+  .barra .bt:not(.prim) .t{display:none}
+  .barra .bt:not(.prim){padding:0;width:34px}
+  .barra{gap:5px}
+}
+@container (max-width: 300px){
+  .barra .bt.prim .t{display:none}
+  .barra .bt.prim{padding:0;width:34px}
+  .barra{gap:4px}
+}
 .cab-lista .chips button{font-size:12px;padding:5px 10px}
 .cab-lista{justify-content:flex-start}
 .cab-lista select{margin-left:auto}
@@ -345,8 +369,14 @@ if (!st.visto) st.visto = 'todos';
 if (!st.faixas) st.faixas = {total:[0,3000], aluguel:[0,15000], condominio:[0,4000], area:[40,300]};
 if (typeof st.total === 'number') { st.faixas.total[1] = st.total; delete st.total; }
 const ativo = (m, id) => !!(m[id] && m[id].v);
-const fav = id => ativo(MEM.favoritos, id);
-const visto = id => ativo(MEM.vistos, id);
+// a marcação do próprio anúncio vale; sem ela, herda dos ids antigos do mesmo imóvel (anúncio tirado do ar e publicado de novo)
+function marcaDe(m, x){
+  if (typeof x === 'string') x = porId(x) || {id: x};
+  const own = m[x.id]; if (own) return !!own.v;
+  return (x.antes || []).some(a => m[a] && m[a].v);
+}
+const fav = x => marcaDe(MEM.favoritos, x);
+const visto = x => marcaDe(MEM.vistos, x);
 
 /* ================= tema ================= */
 let modoTema = LS.get('tema', 'auto');
@@ -363,12 +393,38 @@ function aplicarTema(){
 }
 $('#btTema').onclick = () => {
   modoTema = {auto:'claro', claro:'escuro', escuro:'auto'}[modoTema];
-  LS.set('tema', modoTema); aplicarTema();
+  LS.set('tema', modoTema); aplicarTema(); guardarFiltros();
   toast({auto:'Tema automático pelo horário', claro:'Tema claro', escuro:'Tema escuro'}[modoTema]);
 };
 setInterval(aplicarTema, 5 * 60 * 1000);
 
 /* ================= nuvem (Firebase: login Google + Firestore) ================= */
+// tudo o que é escolha da pessoa (filtros, aba, ordem, tema) vai junto com favoritos e perímetro
+const REPINTA = [];
+let prefsAplicadas = LS.get('prefs_t', 0);
+function prefsAtuais(){ const p = JSON.parse(JSON.stringify(st)); p.tema = modoTema; return p; }
+let prefsTimer = null;
+function guardarFiltros(){
+  LS.set('filtros3', st);
+  const p = prefsAtuais(), js = JSON.stringify(p);
+  // primeira vez neste aparelho: guarda sem se dizer mais novo que o que já está na conta
+  if (!MEM.filtros) { MEM.filtros = p; MEM.filtros_t = 0; LS.set('memoria', MEM); return; }
+  if (js === JSON.stringify(MEM.filtros || null)) return;
+  MEM.filtros = p; MEM.filtros_t = Date.now(); prefsAplicadas = MEM.filtros_t;
+  LS.set('memoria', MEM); LS.set('prefs_t', prefsAplicadas);
+  clearTimeout(prefsTimer); prefsTimer = setTimeout(() => Nuvem.prefs(), 1500);
+}
+function aplicarPrefsDaNuvem(){
+  if (!MEM.filtros || (MEM.filtros_t || 0) <= prefsAplicadas) return false;
+  const p = MEM.filtros;
+  for (const k of Object.keys(p)) if (k !== 'tema') st[k] = p[k];
+  if (p.tema && p.tema !== modoTema) { modoTema = p.tema; LS.set('tema', modoTema); aplicarTema(); }
+  prefsAplicadas = MEM.filtros_t; LS.set('prefs_t', prefsAplicadas); LS.set('filtros3', st);
+  REPINTA.forEach(f => f());
+  desenharFontes(); pintarMostrar();
+  trocarVista(st.vista);
+  return true;
+}
 const Nuvem = {
   ok: false, user: null, db: null, ref: null, refPub: null, cancelar: null,
   marcar(cls, txt, foto){
@@ -417,10 +473,12 @@ const Nuvem = {
       this.cancelar = this.ref.onSnapshot(s => {
         if (!s.exists || s.metadata.hasPendingWrites) return;
         MEM = juntar(MEM, this.ler(s.data())); LS.set('memoria', MEM);
-        if (!editando) { desenharPerimetro(); redesenhar(); }
+        aplicarPrefsDaNuvem();
+        if (!editando) { desenharPerimetro(); desenharAreas(); redesenhar(); }
       }, () => this.marcar('err', 'sem acesso', u.photoURL));
       LS.set('memoria', MEM);
-      desenharPerimetro(); redesenhar();
+      aplicarPrefsDaNuvem();
+      desenharPerimetro(); desenharAreas(); redesenhar();
       this.marcar('ok', (u.displayName || u.email || 'conectado').split(' ')[0], u.photoURL);
     } catch (e) {
       console.error(e);
@@ -428,8 +486,15 @@ const Nuvem = {
       toast('Sem permissão para ler a memória desta conta');
     }
   },
-  serializar(m){ return {favoritos: m.favoritos, vistos: m.vistos, perimetro: JSON.stringify(m.perimetro || null), perimetro_t: m.perimetro_t || 0}; },
-  ler(d){ let p = null; try { p = JSON.parse(d.perimetro || 'null'); } catch {} return {favoritos: d.favoritos || {}, vistos: d.vistos || {}, perimetro: p, perimetro_t: d.perimetro_t || 0}; },
+  serializar(m){ return {favoritos: m.favoritos, vistos: m.vistos, perimetro: JSON.stringify(m.perimetro || null), perimetro_t: m.perimetro_t || 0,
+    filtros: JSON.stringify(m.filtros || null), filtros_t: m.filtros_t || 0}; },
+  ler(d){ let p = null, f = null; try { p = JSON.parse(d.perimetro || 'null'); } catch {} try { f = JSON.parse(d.filtros || 'null'); } catch {}
+    return {favoritos: d.favoritos || {}, vistos: d.vistos || {}, perimetro: p, perimetro_t: d.perimetro_t || 0, filtros: f, filtros_t: d.filtros_t || 0}; },
+  async prefs(){
+    if (!this.user) return;
+    try { await this.ref.set({filtros: JSON.stringify(MEM.filtros || null), filtros_t: MEM.filtros_t || 0}, {merge:true}); }
+    catch (e) { this.marcar('err', 'erro ao salvar', this.user.photoURL); }
+  },
   async marcacao(tipo, id, val){
     if (!this.user) return;
     try { await this.ref.set({[tipo]: {[id]: val}}, {merge:true}); }
@@ -454,10 +519,13 @@ function juntar(a, b){
   const usarB = b.perimetro && ((b.perimetro_t || 0) >= (a.perimetro_t || 0) || !a.perimetro);
   m.perimetro = usarB ? b.perimetro : a.perimetro;
   m.perimetro_t = usarB ? (b.perimetro_t || 0) : (a.perimetro_t || 0);
+  const fB = b.filtros && ((b.filtros_t || 0) > (a.filtros_t || 0) || !a.filtros);
+  m.filtros = fB ? b.filtros : (a.filtros || null);
+  m.filtros_t = fB ? (b.filtros_t || 0) : (a.filtros_t || 0);
   return m;
 }
 function marcar(tipo, id){
-  const val = {v: !ativo(MEM[tipo], id), t: Date.now()};
+  const val = {v: !marcaDe(MEM[tipo], id), t: Date.now()};
   MEM[tipo][id] = val;
   LS.set('memoria', MEM);
   Nuvem.marcacao(tipo, id, val);
@@ -527,8 +595,8 @@ function filtrar(){
     (st.tipo === 'todos' || (x.tipo || 'Apartamento') === st.tipo) &&
     (!st.quartos || !x.quartos || x.quartos >= st.quartos) &&   // sem quartos informados: fica
     (!st.novo || (!x.inicial && horas(dataAnuncio(x)) <= st.novo)) &&
-    (!st.soFav || fav(x.id)) &&
-    (st.visto === 'todos' || (st.visto === 'nao' ? !visto(x.id) : visto(x.id))) &&
+    (!st.soFav || fav(x)) &&
+    (st.visto === 'todos' || (st.visto === 'nao' ? !visto(x) : visto(x))) &&
     (!st.perim || x.lat == null || noPerimetro(x))
   );
 }
@@ -543,17 +611,20 @@ function ordenar(l){
 }
 
 /* ================= componentes ================= */
+const ytId = u => { const m = /(?:youtu\.be\/|youtube\.com\/(?:watch\?(?:.*&)?v=|embed\/|shorts\/|live\/))([\w-]{11})/.exec(u || ''); return m ? m[1] : null; };
 function carrossel(x, opts = {}){
-  const fotos = x.fotos || [];
+  const yt = ytId(x.video);
+  const fotos = (x.fotos || []).concat(yt ? [`https://i.ytimg.com/vi/${yt}/hqdefault.jpg`] : []);
   const tag = `<div class="fonte-tag"><i style="background:${COR[x.fonte]}"></i>${x.fonte}</div>`;
-  const estrela = opts.semEstrela ? '' : `<button class="estrela ${fav(x.id) ? 'on' : ''}" data-a="fav" data-id="${esc(x.id)}" title="Favoritar">${fav(x.id) ? '★' : '☆'}</button>`;
+  const estrela = opts.semEstrela ? '' : `<button class="estrela ${fav(x) ? 'on' : ''}" data-a="fav" data-id="${esc(x.id)}" title="Favoritar">${fav(x) ? '★' : '☆'}</button>`;
   if (!fotos.length) return `<div class="carr">${tag}<div class="sem">sem fotos</div>${estrela}</div>`;
   const imgs = fotos.map((f, i) => i === 0
     ? `<img src="${esc(f)}" loading="lazy" referrerpolicy="no-referrer" alt="" draggable="false">`
     : `<img data-src="${esc(f)}" referrerpolicy="no-referrer" alt="" draggable="false">`).join('');
-  return `<div class="carr" data-id="${esc(x.id)}" data-i="0">
+  const play = yt ? `<a class="play" href="https://www.youtube.com/watch?v=${yt}" target="_blank" rel="noopener"><span>▶</span>Ver vídeo</a>` : '';
+  return `<div class="carr ${yt ? 'tem-video' : ''} ${fotos.length === 1 ? 'fim' : ''}" data-id="${esc(x.id)}" data-i="0">
     <div class="trilho">${imgs}</div>
-    ${tag}${estrela}
+    ${tag}${estrela}${play}
     ${fotos.length > 1 ? `<button class="nav ant" data-a="ant" aria-label="Foto anterior">‹</button><button class="nav prox" data-a="prox" aria-label="Próxima foto">›</button><div class="cont num">1/${fotos.length}</div>` : ''}
   </div>`;
 }
@@ -572,6 +643,7 @@ function selos(x){
   if (x.lat == null) s += '<span class="selo">sem endereço</span>';
   else if (x.aprox) s += '<span class="selo">local aproximado</span>';
   if (x.mobiliado) s += '<span class="selo">mobiliado</span>';
+  if (x.antes && x.antes.length) s += '<span class="selo" title="O mesmo imóvel já esteve no ar com outro link; favorito e visto continuam valendo">re-anunciado</span>';
   return s;
 }
 function quandoTxt(x){
@@ -585,41 +657,59 @@ function tambem(x){
 function acoes(x, noCartao){
   return `<div class="acoes">
     <button data-a="copiar" data-id="${esc(x.id)}">Copiar link</button>
-    ${noCartao ? '' : `<button data-a="visto" data-id="${esc(x.id)}" class="${visto(x.id) ? 'on' : ''}">${visto(x.id) ? '✓ Visto' : 'Marcar visto'}</button>`}
+    ${noCartao ? '' : `<button data-a="visto" data-id="${esc(x.id)}" class="${visto(x) ? 'on' : ''}">${visto(x) ? '✓ Visto' : 'Marcar visto'}</button>`}
     <a href="${esc(x.url)}" target="_blank" rel="noopener">Abrir ↗</a>
   </div>`;
 }
 const ICONE_OLHO_P = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></svg>';
 const ICONE_OLHO = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></svg>';
+const IC = {
+  copiar: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h10"/></svg>',
+  mapa: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 21s-7-6.2-7-11.5A7 7 0 0 1 19 9.5C19 14.8 12 21 12 21z"/><circle cx="12" cy="9.5" r="2.5"/></svg>',
+  video: '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 5.5v13l11-6.5z"/></svg>',
+  abrir: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 4h6v6"/><path d="M20 4l-9 9"/><path d="M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5"/></svg>'
+};
+// mesma barra no cartão da lista e no popup do mapa:
+// à esquerda o que é seu (favorito, visto); à direita o que se faz com o anúncio
+function barra(x, noMapa){
+  const f = fav(x), v = visto(x), yt = ytId(x.video);
+  const vid = x.video ? (yt ? `https://www.youtube.com/watch?v=${yt}` : x.url) : null;
+  return `<div class="barra">
+    <button class="bt est ${f ? 'on fav' : ''}" data-a="fav" data-id="${esc(x.id)}" title="${f ? 'Tirar dos favoritos' : 'Favoritar'}"><span class="i">${f ? '★' : '☆'}</span><span class="t">${f ? 'Favorito' : 'Favoritar'}</span></button>
+    <button class="bt est ${v ? 'on' : ''}" data-a="visto" data-id="${esc(x.id)}" title="${v ? 'Marcar como não visto' : 'Marcar como visto'}"><span class="i">${ICONE_OLHO_P}</span><span class="t">${v ? 'Visto' : 'Marcar visto'}</span></button>
+    <span class="esp"></span>
+    ${!noMapa && x.lat != null ? `<button class="bt" data-a="mapa" data-id="${esc(x.id)}" title="Ver no mapa"><span class="i">${IC.mapa}</span><span class="t">Mapa</span></button>` : ''}
+    ${vid ? `<a class="bt" href="${esc(vid)}" target="_blank" rel="noopener" title="${yt ? 'Ver vídeo no YouTube' : 'O vídeo está dentro do anúncio'}"><span class="i">${IC.video}</span><span class="t">Vídeo</span></a>` : ''}
+    <button class="bt" data-a="copiar" data-id="${esc(x.id)}" title="Copiar link"><span class="i">${IC.copiar}</span><span class="t">Copiar</span></button>
+    <a class="bt prim" href="${esc(x.url)}" target="_blank" rel="noopener" title="Abrir o anúncio"><span class="t">Abrir</span><span class="i">${IC.abrir}</span></a>
+  </div>`;
+}
 function card(x){
-  return `<article class="card ${visto(x.id) ? 'visto' : ''}">
+  return `<article class="card ${visto(x) ? 'visto' : ''}">
     ${carrossel(x, {semEstrela:true})}
     <div class="info">
-      <div class="linha-preco">
-        <div class="preco"><b class="num">${brl(x.total)}</b><small>aluguel + cond.</small></div>
-        ${icones(x)}
-      </div>
+      <div class="preco"><b class="num">${brl(x.total)}</b><small>aluguel + cond.</small></div>
       <div class="quebra num">Aluguel ${brl(x.aluguel)} · Cond. ${x.condominio ? brl(x.condominio) : '—'}${x.iptu ? ' · IPTU ' + brl(x.iptu) : ''}</div>
       <div class="meta">${esc(detalhes(x))}${x.area ? ' · ' + brl(x.total / x.area) + '/m²' : ''}</div>
       <div class="local">${esc([x.bairro, x.cidade].filter(Boolean).join(', '))}</div>
       <div class="meta">${quandoTxt(x)}${x.anunciante ? ' · ' + esc(x.anunciante) : ''}</div>
       ${tambem(x)}
       <div class="selos">${selos(x)}</div>
-      ${acoes(x, true)}
+      ${barra(x)}
     </div>
   </article>`;
 }
 function icones(x){
   return `<div class="icones">
-          <button class="ic ${fav(x.id) ? 'on fav' : ''}" data-a="fav" data-id="${esc(x.id)}" title="${fav(x.id) ? 'Tirar dos favoritos' : 'Favoritar'}" aria-label="Favoritar">${fav(x.id) ? '★' : '☆'}</button>
-          <button class="ic ${visto(x.id) ? 'on' : ''}" data-a="visto" data-id="${esc(x.id)}" title="${visto(x.id) ? 'Marcar como não visto' : 'Marcar como visto'}" aria-label="Visto">${ICONE_OLHO}</button>
+          <button class="ic ${fav(x) ? 'on fav' : ''}" data-a="fav" data-id="${esc(x.id)}" title="${fav(x) ? 'Tirar dos favoritos' : 'Favoritar'}" aria-label="Favoritar">${fav(x) ? '★' : '☆'}</button>
+          <button class="ic ${visto(x) ? 'on' : ''}" data-a="visto" data-id="${esc(x.id)}" title="${visto(x) ? 'Marcar como não visto' : 'Marcar como visto'}" aria-label="Visto">${ICONE_OLHO}</button>
         </div>`;
 }
 function popup(x){
   return `<div class="pop">
     ${carrossel(x, {semEstrela:true})}
     <div class="corpo">
-      <div class="linha-preco"><div class="preco"><b class="num">${brl(x.total)}</b><small>aluguel + cond.</small></div>${icones(x)}</div>
+      <div class="preco"><b class="num">${brl(x.total)}</b><small>aluguel + cond.</small></div>
       <div class="precos num">
         <span>Aluguel</span><span>${brl(x.aluguel)}</span>
         <span>Condomínio</span><span>${x.condominio ? brl(x.condominio) : '—'}</span>
@@ -630,7 +720,7 @@ function popup(x){
       <div class="meta">${quandoTxt(x)}${x.anunciante ? ' · ' + esc(x.anunciante) : ''}</div>
       ${tambem(x)}
       <div class="selos">${selos(x)}</div>
-      ${acoes(x, true)}
+      ${barra(x, true)}
     </div>
   </div>`;
 }
@@ -692,7 +782,7 @@ const camadaPerim = L.featureGroup().addTo(mapa);
 const marcadores = new Map();
 
 function icone(x){
-  const c = ['pin']; if (fav(x.id)) c.push('fav'); else if (visto(x.id)) c.push('visto'); else if (!x.inicial && horas(dataAnuncio(x)) <= 24) c.push('novo');
+  const c = ['pin']; if (fav(x)) c.push('fav'); else if (visto(x)) c.push('visto'); else if (!x.inicial && horas(dataAnuncio(x)) <= 24) c.push('novo');
   return L.divIcon({className:'', html:`<div class="${c.join(' ')}" style="background:${COR[x.fonte]}"></div>`, iconSize:[18,18], iconAnchor:[9,9], popupAnchor:[0,-6]});
 }
 function iconeGrupo(n){
@@ -847,14 +937,14 @@ function redesenhar(){
   desenharMapa();
   if (st.vista !== 'mapa') { const y = $('#vistaLista').scrollTop; desenharLista(); while (mostrados < listaAtual.length && $('#vistaLista').scrollHeight - 800 < y) maisLista(); $('#vistaLista').scrollTop = y; }
   $('#status').textContent = `${visiveis.length.toLocaleString('pt-BR')} anúncios · atualizado ${DADOS.gerado ? quando(DADOS.gerado) : '—'}`;
-  LS.set('filtros3', st);
+  guardarFiltros();
 }
 function trocarVista(v){
   st.vista = v;
   document.querySelectorAll('#abas button').forEach(b => b.classList.toggle('on', b.dataset.v === v));
   $('#palco').classList.toggle('lista', v !== 'mapa');
   if (v !== 'mapa') desenharLista(); else setTimeout(() => { mapa.invalidateSize(); desenharMapa(); }, 0);
-  LS.set('filtros3', st);
+  guardarFiltros();
 }
 // fontes que não rodam toda hora: Imobiliárias a cada 6 h, Imovelweb uma vez por dia
 const CICLO_H = {'Imobiliárias': 6, 'Imovelweb': 24};
@@ -894,7 +984,8 @@ function chips(sel, chave, conv){
 function chips1(box, sel, chave, conv){
   const pinta = () => document.querySelectorAll(sel).forEach(bx => bx.querySelectorAll('button').forEach(b => b.classList.toggle('on', String(st[chave]) === b.dataset.v)));
   pinta();
-  box.addEventListener('click', e => { const b = e.target.closest('button'); if (!b) return; st[chave] = conv(b.dataset.v); pinta(); if (chave === 'endereco') { desenharLista(); LS.set('filtros3', st); } else redesenhar(); });
+  box.addEventListener('click', e => { const b = e.target.closest('button'); if (!b) return; st[chave] = conv(b.dataset.v); pinta(); if (chave === 'endereco') { desenharLista(); guardarFiltros(); } else redesenhar(); });
+  REPINTA.push(pinta);
 }
 chips('#fQuartos', 'quartos', Number); chips('#fTipo', 'tipo', String); chips('#fEndereco', 'endereco', String); chips('.fNovo', 'novo', Number);
 // botões de "Mostrar": favoritos liga/desliga; vistos gira entre todos → só vistos → não vistos
@@ -933,6 +1024,7 @@ document.querySelectorAll('.duplo').forEach(box => {
     $('#o_' + k).textContent = textoFaixa(k);
   };
   i1.value = st.faixas[k][0]; i2.value = Math.min(max, st.faixas[k][1]); pinta();
+  REPINTA.push(() => { i1.value = st.faixas[k][0]; i2.value = Math.min(max, st.faixas[k][1]); pinta(); });
   const mexe = () => {
     let a = +i1.value, b = +i2.value;
     if (a > b) { if (document.activeElement === i1) a = b; else b = a; i1.value = a; i2.value = b; }
@@ -945,11 +1037,24 @@ $('#fPerim').checked = st.perim;
 $('#fPerim').addEventListener('change', e => { st.perim = e.target.checked; redesenhar(); });
 $('#fontes').addEventListener('change', e => { const f = e.target.dataset.f; if (!f) return; st.fontes = e.target.checked ? [...new Set([...st.fontes, f])] : st.fontes.filter(x => x !== f); redesenhar(); });
 $('#ordem').value = st.ordem;
-$('#ordem').addEventListener('change', e => { st.ordem = e.target.value; desenharLista(); LS.set('filtros3', st); });
+$('#ordem').addEventListener('change', e => { st.ordem = e.target.value; desenharLista(); guardarFiltros(); });
+REPINTA.push(() => { $('#ordem').value = st.ordem; $('#fPerim').checked = st.perim; });
 $('#abas').addEventListener('click', e => { const b = e.target.closest('button'); if (b) trocarVista(b.dataset.v); });
 $('#btnFiltros').onclick = () => $('#painel').classList.toggle('aberto');
 function fecharPainelCel(){ $('#painel').classList.remove('aberto'); }
 
+function verNoMapa(x){
+  if (x.lat == null) return;
+  trocarVista('mapa');
+  setTimeout(() => {
+    const m = marcadores.get(x.id);
+    if (!m) { mapa.setView([x.lat, x.lng], 17); toast('Este anúncio está escondido pelos filtros do mapa'); return; }
+    camadaPinos.zoomToShowLayer(m, () => {
+      if (mapa.getZoom() < 16) mapa.setView(m.getLatLng(), 16, {animate:false});
+      m.openPopup();
+    });
+  }, 80);
+}
 async function copiar(txt){
   try { await navigator.clipboard.writeText(txt); }
   catch { const t = document.createElement('textarea'); t.value = txt; document.body.appendChild(t); t.select(); document.execCommand('copy'); t.remove(); }
@@ -984,6 +1089,7 @@ document.addEventListener('click', e => {
   if (a === 'ant' || a === 'prox') { e.preventDefault(); e.stopPropagation(); trocarFoto(b.closest('.carr'), a === 'ant' ? -1 : 1); return; }
   const id = b.dataset.id; const x = porId(id); if (!x) return;
   if (a === 'copiar') { copiar(x.url); return; }
+  if (a === 'mapa') { verNoMapa(x); return; }
   if (a === 'fav' || a === 'visto') {
     e.stopPropagation();
     marcar(a === 'fav' ? 'favoritos' : 'vistos', id);
@@ -993,7 +1099,7 @@ document.addEventListener('click', e => {
 let arraste = null;
 document.addEventListener('pointerdown', e => {
   const c = e.target.closest('.carr[data-id]');
-  if (!c || e.target.closest('button') || (e.pointerType === 'mouse' && e.button !== 0)) return;
+  if (!c || e.target.closest('button, a') || (e.pointerType === 'mouse' && e.button !== 0)) return;
   if (c.closest('.leaflet-popup')) e.stopPropagation();   // não arrasta o mapa junto
   arraste = {c, x: e.clientX, y: e.clientY, w: c.clientWidth, i: +c.dataset.i, dx: 0, ativo: false, id: e.pointerId, t: performance.now()};
 }, true);

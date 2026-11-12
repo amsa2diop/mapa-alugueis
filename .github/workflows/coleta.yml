@@ -56,7 +56,7 @@ jobs:
         run: |
           test -s dados/anuncios.json || exit 0
           gzip -c dados/anuncios.json > estado/anuncios.json.gz
-          for f in meta.json geocache.json perimetro.json coletor.log; do cp "dados/$f" estado/ 2>/dev/null || true; done
+          for f in meta.json geocache.json perimetro.json sumidos.json coletor.log; do cp "dados/$f" estado/ 2>/dev/null || true; done
           cd estado
           git add -A
           git commit -q --amend -m "estado" || exit 0
