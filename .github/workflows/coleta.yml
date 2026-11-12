@@ -2,7 +2,10 @@ name: Coleta
 # De hora em hora, das 8h às 23h (horário de Brasília = UTC-3). De madrugada não roda.
 on:
   schedule:
-    - cron: "17 0-2,11-23 * * *"
+    # dois horários por hora: o agendador do GitHub às vezes pula execuções;
+    # a segunda só coleta se a primeira não tiver rodado (ver "Precisa coletar?")
+    - cron: "12 0-2,11-23 * * *"
+    - cron: "42 0-2,11-23 * * *"
   workflow_dispatch:
     inputs:
       args:
@@ -49,10 +52,26 @@ jobs:
           gunzip -c estado/anuncios.json.gz > dados/anuncios.json
           git config --global user.name "github-actions[bot]"
           git config --global user.email "41898282+github-actions[bot]@users.noreply.github.com"
+      - name: Precisa coletar?
+        id: precisa
+        run: |
+          python - <<'PY' >> "$GITHUB_OUTPUT"
+          import json, os
+          from datetime import datetime, timezone
+          ev = os.environ.get("GITHUB_EVENT_NAME")
+          try:
+              m = json.load(open("dados/meta.json", encoding="utf8"))
+              ult = max(datetime.fromisoformat(f["tentativa"]) for f in m["fontes"].values() if f.get("tentativa"))
+              idade = (datetime.now(timezone.utc) - ult).total_seconds() / 60
+          except Exception:
+              idade = 999
+          print("sim=" + ("true" if ev != "schedule" or idade > 40 else "false"))
+          PY
       - name: Coletar e publicar
+        if: steps.precisa.outputs.sim == 'true'
         run: python coletor.py ${{ github.event.inputs.args }}
       - name: Guardar estado
-        if: always()
+        if: always() && steps.precisa.outputs.sim == 'true'
         run: |
           test -s dados/anuncios.json || exit 0
           gzip -c dados/anuncios.json > estado/anuncios.json.gz
