@@ -642,9 +642,26 @@ function poligonos(gj, soLigadas = true){
   }
   return out;
 }
+// folga em volta do desenho, pelo erro de localização medido em cada fonte (vem do coletor)
+function margemDe(x){
+  const M = (DADOS && DADOS.margens) || {exato:60, aprox:{}, padrao:800};
+  return x.aprox ? (M.aprox[x.fonte] || M.padrao) : M.exato;
+}
+function pertoDaBorda(lng, lat, anel, metros){
+  const kx = Math.cos(lat * Math.PI / 180), lim = metros / 111000, px = lng * kx;
+  for (let i = 0; i < anel.length - 1; i++) {
+    const ax = anel[i][0] * kx, ay = anel[i][1], bx = anel[i+1][0] * kx, by = anel[i+1][1];
+    const dx = bx - ax, dy = by - ay;
+    const t = Math.max(0, Math.min(1, ((px - ax) * dx + (lat - ay) * dy) / ((dx*dx + dy*dy) || 1e-12)));
+    if (Math.hypot(px - ax - t*dx, lat - ay - t*dy) < lim) return true;
+  }
+  return false;
+}
 function noPerimetro(x){
   const ps = poligonos(MEM.perimetro);
-  return !ps.length || ps.some(p => dentroAnel(x.lng, x.lat, p[0]));
+  if (!ps.length) return true;
+  const mg = margemDe(x);
+  return ps.some(p => dentroAnel(x.lng, x.lat, p[0])) || ps.some(p => pertoDaBorda(x.lng, x.lat, p[0], mg));
 }
 
 /* ================= filtros ================= */
@@ -958,7 +975,8 @@ function desenharPerimetro(){
 function contarNaArea(f){
   const anel = f.geometry && f.geometry.type === 'Polygon' ? f.geometry.coordinates[0] : null;
   if (!anel) return 0;
-  return DADOS.anuncios.filter(x => x.lat != null && dentroAnel(x.lng, x.lat, anel)).length;
+  return DADOS.anuncios.filter(x => x.lat != null &&
+    (dentroAnel(x.lng, x.lat, anel) || pertoDaBorda(x.lng, x.lat, anel, margemDe(x)))).length;
 }
 function desenharAreas(){
   const fs = (MEM.perimetro && MEM.perimetro.features) || [];

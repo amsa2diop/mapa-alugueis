@@ -1078,7 +1078,14 @@ def mesclar(estado, itens, t, fonte_completa=None):
 CONFIG = BASE / "config.json"
 PERIM_CACHE = DADOS / "perimetro.json"
 PERIM_PADRAO = BASE / "perimetro_padrao.json"
-PERIM_MARGEM = 0.004  # ~400 m de folga em volta do desenho
+# folga em volta do desenho (metros), pelo erro medido de cada fonte: comparando o mesmo imóvel
+# anunciado com endereço exato num site e aproximado em outro, ~70% dos aproximados caem a até esta distância
+MARGEM_EXATO = 60
+MARGEM_APROX = {"Loft": 250, "VivaReal": 400, "Imobiliárias": 800, "OLX": 900, "Chaves na Mão": 900, "Imovelweb": 1000}
+MARGEM_APROX_PADRAO = 800
+
+def margem_de(v):
+    return MARGEM_APROX.get(v.get("fonte"), MARGEM_APROX_PADRAO) if v.get("aprox") else MARGEM_EXATO
 
 PERIM_T = 0   # carimbo (ms) do perímetro usado na última geração do site
 
@@ -1124,9 +1131,12 @@ def _dist_seg(px, py, ax, ay, bx, by):
     t = max(0, min(1, ((px - ax) * dx + (py - ay) * dy) / ((dx * dx + dy * dy) or 1e-12)))
     return ((px - ax - t * dx) ** 2 + (py - ay - t * dy) ** 2) ** 0.5
 
-def no_perimetro(lat, lng, perim):
+def no_perimetro(lat, lng, perim, margem_m=400):
     if not perim or not perim.get("features"):
         return True
+    import math
+    kx = math.cos(math.radians(lat))  # distância em graus de latitude: corrige a longitude
+    lim = margem_m / 111_000
     for f in perim["features"]:
         g = f.get("geometry") or {}
         polis = [g["coordinates"]] if g.get("type") == "Polygon" else g.get("coordinates", []) if g.get("type") == "MultiPolygon" else []
@@ -1134,7 +1144,8 @@ def no_perimetro(lat, lng, perim):
             anel = poli[0]
             if _dentro(lng, lat, anel):
                 return True
-            if any(_dist_seg(lng, lat, *anel[i], *anel[i + 1]) < PERIM_MARGEM for i in range(len(anel) - 1)):
+            if any(_dist_seg(lng * kx, lat, anel[i][0] * kx, anel[i][1], anel[i + 1][0] * kx, anel[i + 1][1]) < lim
+                   for i in range(len(anel) - 1)):
                 return True
     return False
 
@@ -1192,7 +1203,7 @@ def gerar_site(estado, meta):
             return False
         if v.get("lat") is None:  # sem endereço: entra se o bairro é do perímetro (ou não foi informado)
             return not v.get("bairro") or sem_acento(v["bairro"]) in BAIRROS_PERIM
-        return no_perimetro(v["lat"], v["lng"], perim)
+        return no_perimetro(v["lat"], v["lng"], perim, margem_de(v))
     ativos = {k for k, v in estado.items() if entra(v)}
     lista = [dict(estado[k]) for k in ativos]
     try:
@@ -1231,6 +1242,7 @@ def gerar_site(estado, meta):
     log(f"Repetidos entre sites juntados: {sum(len(v.get('tambem', [])) for v in lista)}")
     SITE.mkdir(exist_ok=True)
     payload = {"gerado": iso(t), "perimetro_t": PERIM_T, "filtros": {"total_max": TOTAL_MAX, "area_min": AREA_MIN},
+               "margens": {"exato": MARGEM_EXATO, "aprox": MARGEM_APROX, "padrao": MARGEM_APROX_PADRAO},
                "fontes": meta.get("fontes", {}), "anuncios": enxuto}
     (SITE / "dados.json").write_text(json.dumps(payload, ensure_ascii=False, separators=(",", ":")), encoding="utf-8")
     import shutil
