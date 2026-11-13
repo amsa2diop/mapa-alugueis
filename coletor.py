@@ -384,7 +384,7 @@ def olx_paginas(varredura):
         out += [(f"casas:{b}", f"{OLX_BASE_CASAS}{b}?{filtro}", 3) for b in OLX_BAIRROS]
     return out
 
-OLX_DETALHES_POR_RODADA = 45
+OLX_DETALHES_POR_RODADA = 12   # a página do anúncio bloqueia mais rápido que a lista; poucos e devagar
 
 def olx_detalhe(html_txt):
     """Da página do anúncio: centro do mapa (CEP), rua, descrição e fotos."""
@@ -465,7 +465,7 @@ def coletar_olx(varredura=False, detalhados=frozenset()):
                 d = olx_detalhe(pg.content())
                 if d:
                     detalhes[f"olx-{a['listId']}"] = d
-                time.sleep(random.uniform(1.0, 2.0))
+                time.sleep(random.uniform(6.0, 12.0))
             log(f"OLX: detalhes lidos de {len(detalhes)} anúncios (faltavam {len(fila)})")
         b.close()
     if not brutos:
