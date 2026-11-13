@@ -903,13 +903,9 @@ let base = null, rotulos = null;
 function trocarMapaBase(){
   if (base) mapa.removeLayer(base);
   if (rotulos) mapa.removeLayer(rotulos);
-  // até o zoom 16: mapa cinza da Esri (limpo); do 17 em diante: OpenStreetMap em tons de cinza, com ruas e números
-  const t = escuro() ? 'Dark' : 'Light';
-  base = L.layerGroup([
-    L.tileLayer(`https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_${t}_Gray_Base/MapServer/tile/{z}/{y}/{x}`, {attribution:'Esri, © OpenStreetMap', maxZoom:16}),
-    L.tileLayer(`https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_${t}_Gray_Reference/MapServer/tile/{z}/{y}/{x}`, {maxZoom:16, pane:'overlayPane'}),
-    L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {attribution:'© OpenStreetMap', minZoom:17, maxZoom:20, maxNativeZoom:19, className:'osm-cinza'})
-  ]).addTo(mapa);
+  // um mapa só em todos os zooms: OpenStreetMap padrão, em tons de cinza (invertido no tema escuro)
+  base = L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+    {attribution:'© OpenStreetMap', maxZoom:20, maxNativeZoom:19, className:'osm-cinza'}).addTo(mapa);
   rotulos = null;
 }
 // agrupamento do Leaflet.markercluster: agrupa o que está próximo em qualquer zoom;
