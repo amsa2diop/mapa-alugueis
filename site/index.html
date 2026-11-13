@@ -5,9 +5,9 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-title" content="AMSA imóveis">
+<meta name="apple-mobile-web-app-title" content="Amsa imóveis">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
-<title>AMSA imóveis</title>
+<title>Amsa imóveis</title>
 <script>
   // tema antes de pintar: auto = escuro das 18h às 6h
   (function(){ var m = 'auto'; try { m = JSON.parse(localStorage.getItem('tema')) || 'auto'; } catch(e){}
@@ -56,8 +56,9 @@ a{color:inherit}
 .btn-filtros{display:none;padding:6px 12px;border:1px solid var(--line);border-radius:999px;font-weight:500}
 
 /* ---------- layout ---------- */
-.app{display:grid;grid-template-columns:288px 1fr;height:calc(100vh - 56px);height:calc(100dvh - 56px)}
-.painel{border-right:1px solid var(--line);overflow:auto;padding:20px;display:flex;flex-direction:column;gap:22px}
+.app{display:grid;grid-template-columns:348px 1fr;height:calc(100vh - 56px);height:calc(100dvh - 56px)}
+.painel{border-right:1px solid var(--line);overflow:auto;scrollbar-width:none;padding:20px;display:flex;flex-direction:column;gap:22px}
+.painel::-webkit-scrollbar{display:none}
 .fontes-todas{display:flex;gap:6px;margin:-2px 0 8px}
 .fontes-todas button{font-size:12px;color:var(--ink2);background:none;border:1px solid var(--line);border-radius:999px;padding:3px 9px;cursor:pointer}
 .fontes-todas button:hover{color:var(--ink);border-color:var(--ink3)}
@@ -118,6 +119,13 @@ input[type=range]{width:100%;accent-color:var(--acc);margin:0}
 .cab-lista{display:flex;align-items:center;justify-content:space-between;padding:16px 24px 4px;gap:12px;flex-wrap:wrap}
 .cab-lista select{font:inherit;font-size:13px;padding:6px 10px;border-radius:8px;border:1px solid var(--line);background:var(--bg);color:var(--ink)}
 .grade{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:20px;padding:12px 24px 40px}
+.colunas{display:inline-flex;align-items:center;border:1px solid var(--line);border-radius:999px;padding:2px;margin-left:auto}
+.colunas .ic-grade{display:grid;place-items:center;padding:0 6px 0 8px;color:var(--ink3)}
+.colunas .ic-grade svg{width:14px;height:14px}
+.colunas button{min-width:28px;height:26px;border-radius:999px;font-size:12.5px;font-weight:500;color:var(--ink2)}
+.colunas button.on{background:var(--acc);color:var(--acc-ink)}
+.cab-lista .colunas+select{margin-left:0}
+@media (min-width:821px){.grade[data-col="2"]{grid-template-columns:repeat(2,minmax(0,1fr))}.grade[data-col="3"]{grid-template-columns:repeat(3,minmax(0,1fr))}.grade[data-col="4"]{grid-template-columns:repeat(4,minmax(0,1fr))}}
 .mais{grid-column:1/-1;text-align:center;color:var(--ink3);padding:8px}
 .vazio{padding:48px 24px;color:var(--ink3);text-align:center}
 
@@ -215,6 +223,13 @@ input[type=range]{width:100%;accent-color:var(--acc);margin:0}
 /* ---------- mapa ---------- */
 .leaflet-popup-content-wrapper{border-radius:14px;padding:0;background:var(--bg);color:var(--ink);box-shadow:0 0 0 1px var(--line),0 8px 24px rgba(0,0,0,.12)}
 .leaflet-popup-content{margin:0;width:280px!important;font:inherit}
+.pop-largo .leaflet-popup-content{width:540px!important}
+.pop-largo .pop .carr{aspect-ratio:16/10}
+.pop .duas{display:contents}
+.pop-largo .pop .duas{display:grid;grid-template-columns:1fr 1fr;gap:4px 24px;align-items:start}
+.pop-largo .pop .duas>div{display:flex;flex-direction:column;gap:4px;min-width:0}
+.pop-largo .pop .corpo{padding:14px 18px 16px}
+.pop-largo .pop .preco b{font-size:20px}
 .leaflet-popup-tip{background:var(--bg)}
 .leaflet-container a.leaflet-popup-close-button{display:none}
 .pop .carr{border-radius:14px 14px 0 0}
@@ -228,6 +243,7 @@ input[type=range]{width:100%;accent-color:var(--acc);margin:0}
 .leaflet-control-attribution{background:color-mix(in srgb,var(--bg) 80%,transparent)!important;color:var(--ink3)!important}
 .leaflet-control-attribution a{color:var(--ink2)!important}
 .pin{width:14px;height:14px;border-radius:50%;border:2px solid var(--bg);box-shadow:0 0 0 1px rgba(0,0,0,.3)}
+@media (pointer:fine){.pin{width:18px;height:18px}.clu{font-size:13.5px}}
 .pin.visto{opacity:.35}
 .pin.fav{box-shadow:0 0 0 2px var(--star)}
 .pin.novo{box-shadow:0 0 0 2px var(--ok)}
@@ -252,6 +268,7 @@ dialog p{font-size:13px;color:var(--ink2)}
   .painel.aberto{transform:none}
   .grade{grid-template-columns:1fr;padding:8px 16px 32px;gap:24px}
   .cab-lista{padding:12px 16px 0}
+  .colunas{display:none}
   .pilula b{display:none}
   .abas button{padding:6px 12px}
 }
@@ -259,7 +276,7 @@ dialog p{font-size:13px;color:var(--ink2)}
 </head>
 <body>
 <div class="top">
-  <div class="marca">AMSA <span>imóveis</span></div>
+  <div class="marca">Amsa <span>imóveis</span></div>
   <div class="abas" id="abas"><button data-v="mapa" class="on">Mapa</button><button data-v="lista">Lista</button></div>
   <div class="esp"></div>
   <div class="status" id="status">carregando…</div>
@@ -304,7 +321,7 @@ dialog p{font-size:13px;color:var(--ink2)}
       <div class="cab-fontes"><h3>Fontes</h3>
         <a class="atualizar" href="https://github.com/amsa2diop/mapa-alugueis/actions/workflows/coleta.yml" target="_blank" rel="noopener"
            title="Abre o GitHub: toque em “Run workflow” e confirme. A coleta leva de 5 a 25 minutos e a página se atualiza sozinha.">⟳ Atualizar agora</a></div>
-      <div class="fontes-todas"><button data-todas="1">Marcar todas</button><button data-todas="0">Desmarcar todas</button></div>
+      <div class="fontes-todas"><button id="btTodas"></button></div>
       <div class="fontes" id="fontes"></div>
     </div>
     <div class="grupo">
@@ -336,6 +353,7 @@ dialog p{font-size:13px;color:var(--ink2)}
         <div class="chips" id="fEndereco" title="Sem endereço: o bairro é do seu perímetro, mas o site não informou o local exato">
           <button data-v="todos">Todos</button><button data-v="com">Com endereço</button><button data-v="sem">Sem endereço<span class="num" id="endSemN"></span></button>
         </div>
+        <div class="colunas" id="fColunas" title="Anúncios por linha"><span class="ic-grade"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg></span><button data-v="2">2</button><button data-v="3">3</button><button data-v="4">4</button></div>
         <select id="ordem">
           <option value="novo">Mais recentes</option>
           <option value="total">Menor valor</option>
@@ -394,7 +412,7 @@ const st0 = LS.get('filtros3', {}); if (st0.fontes && !st0.fontesV2) { st0.fonte
 // fonte nova (Loft) entra ligada para quem já tinha filtros salvos
 function fontesNovas(o){ if (o && o.fontes && !o.fontesV3) { o.fontes = [...new Set([...o.fontes, 'Loft'])]; o.fontesV3 = 1; } return o; }
 fontesNovas(st0); LS.set('filtros3', st0);
-const st = Object.assign({faixas:{total:[0,3000], aluguel:[0,15000], condominio:[0,4000], area:[40,300]}, area:40, quartos:0, novo:0, soFav:false, visto:'todos', fontes:FONTES.slice(), perim:true, ordem:'novo', vista:'mapa', tipo:'todos', endereco:'todos'}, LS.get('filtros3', {}));
+const st = Object.assign({faixas:{total:[0,3000], aluguel:[0,15000], condominio:[0,4000], area:[40,300]}, area:40, quartos:0, novo:0, soFav:false, visto:'todos', fontes:FONTES.slice(), perim:true, colunas:3, ordem:'novo', vista:'mapa', tipo:'todos', endereco:'todos'}, LS.get('filtros3', {}));
 if (st.vista === 'sem') { st.vista = 'lista'; st.endereco = 'sem'; }
 if (st.mostrar !== undefined) { st.soFav = st.mostrar === 'fav'; st.visto = st.mostrar === 'nao' ? 'nao' : st.mostrar === 'vistos' ? 'vistos' : 'todos'; delete st.mostrar; }
 if (!st.visto) st.visto = 'todos';
@@ -859,15 +877,17 @@ function popup(x){
   return `<div class="pop">
     ${carrossel(x, {semEstrela:true})}
     <div class="corpo">
+      <div class="duas"><div>
       <div class="preco"><b class="num">${brl(x.total)}</b><small>aluguel + cond.</small></div>
       <div class="precos num">
         <span>Aluguel</span><span>${brl(x.aluguel)}</span>
         <span>Condomínio</span><span>${x.condominio ? brl(x.condominio) : '—'}</span>
         ${x.iptu ? `<span>IPTU (à parte)</span><span>${brl(x.iptu)}</span>` : ''}
-      </div>
+      </div></div><div>
       <div class="meta">${esc(detalhes(x))}${x.area ? ' · ' + brl(x.total / x.area) + '/m²' : ''}</div>
       <div class="local">${esc([x.endereco, x.bairro, x.cidade].filter(Boolean).join(', '))}</div>
       <div class="meta">${quandoTxt(x)}${x.anunciante ? ' · ' + esc(x.anunciante) : ''}</div>
+      </div></div>
       ${descricao(x)}
       ${tambem(x)}
       <div class="selos">${selos(x)}</div>
@@ -878,6 +898,9 @@ function popup(x){
 
 /* ================= mapa ================= */
 const TOQUE = matchMedia('(pointer: coarse)').matches;
+// no computador o popup é largo: foto grande e informações em duas colunas
+const POP_L = !TOQUE && innerWidth > 900 ? 540 : 280;
+document.documentElement.classList.toggle('pop-largo', POP_L > 280);
 const mapa = L.map('mapa', {zoomControl:false, maxZoom:20, zoomSnap:0.25, doubleClickZoom: !TOQUE}).setView([-22.935, -43.17], 13);
 L.control.zoom({position:'bottomright'}).addTo(mapa);
 (function gestosDeToque(){
@@ -935,16 +958,16 @@ const marcadores = new Map();
 
 function icone(x){
   const c = ['pin']; if (fav(x)) c.push('fav'); else if (visto(x)) c.push('visto'); else if (!x.inicial && horas(dataAnuncio(x)) <= 24) c.push('novo');
-  return L.divIcon({className:'', html:`<div class="${c.join(' ')}" style="background:${COR[x.fonte]}"></div>`, iconSize:[18,18], iconAnchor:[9,9], popupAnchor:[0,-6]});
+  return L.divIcon({className:'', html:`<div class="${c.join(' ')}" style="background:${COR[x.fonte]}"></div>`, iconSize:[TOQUE ? 18 : 24, TOQUE ? 18 : 24], iconAnchor:TOQUE ? [9,9] : [12,12], popupAnchor:[0,-6]});
 }
 function iconeGrupo(n){
-  const s = n < 10 ? 30 : n < 100 ? 36 : 44;
+  const s = Math.round((n < 10 ? 30 : n < 100 ? 36 : 44) * (TOQUE ? 1 : 1.25));
   return L.divIcon({className:'', html:`<div class="clu num" style="width:${s}px;height:${s}px">${n}</div>`, iconSize:[s,s], iconAnchor:[s/2,s/2]});
 }
 function desenharMapa(){
   camadaPinos.clearLayers(); marcadores.clear();
   camadaPinos.addLayers(visiveis.filter(x => x.lat != null).map(x => {
-    const m = L.marker([x.lat, x.lng], {icon: icone(x), riseOnHover:true}).bindPopup(() => popup(x), {maxWidth:300, minWidth:280, autoPanPadding:[24,24]});
+    const m = L.marker([x.lat, x.lng], {icon: icone(x), riseOnHover:true}).bindPopup(() => popup(x), {maxWidth:POP_L, minWidth:POP_L, autoPanPadding:[24,24]});
     marcadores.set(x.id, m);
     return m;
   }));
@@ -1128,6 +1151,7 @@ function desenharFontes(){
     const est = estadoFonte(f, s);
     return `<label title="${esc(est.dica)}"><input type="checkbox" data-f="${f}" ${st.fontes.includes(f) ? 'checked' : ''}><span class="pt" style="background:${COR[f]}"></span><span class="nome">${f}<small class="quando">${esc(est.quando)}</small></span><span class="q num">${(cont[f] || 0).toLocaleString('pt-BR')}</span><span class="st st-${est.nivel}" aria-label="${esc(est.dica)}">${est.icone}</span></label>`;
   }).join('');
+  pintarTodas();
 }
 
 /* ================= eventos ================= */
@@ -1186,17 +1210,23 @@ document.querySelectorAll('.duplo').forEach(box => {
   i1.addEventListener('input', mexe); i2.addEventListener('input', mexe);
   i1.addEventListener('change', redesenhar); i2.addEventListener('change', redesenhar);
 });
-document.querySelector('.fontes-todas').addEventListener('click', e => {
-  const b = e.target.closest('button[data-todas]'); if (!b) return;
-  st.fontes = b.dataset.todas === '1' ? FONTES.slice() : [];
+function pintarTodas(){ $('#btTodas').textContent = FONTES.every(f => st.fontes.includes(f)) ? 'Desmarcar todas' : 'Marcar todas'; }
+$('#btTodas').addEventListener('click', () => {
+  st.fontes = FONTES.every(f => st.fontes.includes(f)) ? [] : FONTES.slice();
   desenharFontes(); redesenhar();
 });
 $('#fPerim').checked = st.perim;
 $('#fPerim').addEventListener('change', e => { st.perim = e.target.checked; redesenhar(); });
-$('#fontes').addEventListener('change', e => { const f = e.target.dataset.f; if (!f) return; st.fontes = e.target.checked ? [...new Set([...st.fontes, f])] : st.fontes.filter(x => x !== f); redesenhar(); });
+$('#fontes').addEventListener('change', e => { const f = e.target.dataset.f; if (!f) return; st.fontes = e.target.checked ? [...new Set([...st.fontes, f])] : st.fontes.filter(x => x !== f); pintarTodas(); redesenhar(); });
 $('#ordem').value = st.ordem;
 $('#ordem').addEventListener('change', e => { st.ordem = e.target.value; desenharLista(); guardarFiltros(); });
-REPINTA.push(() => { $('#ordem').value = st.ordem; $('#fPerim').checked = st.perim; });
+REPINTA.push(() => { $('#ordem').value = st.ordem; $('#fPerim').checked = st.perim; pintarColunas(); });
+function pintarColunas(){
+  $('#grade').dataset.col = st.colunas || 3;
+  $('#fColunas').querySelectorAll('button').forEach(b => b.classList.toggle('on', +b.dataset.v === +(st.colunas || 3)));
+}
+pintarColunas();
+$('#fColunas').addEventListener('click', e => { const b = e.target.closest('button'); if (!b) return; st.colunas = +b.dataset.v; pintarColunas(); guardarFiltros(); });
 $('#abas').addEventListener('click', e => { const b = e.target.closest('button'); if (b) trocarVista(b.dataset.v); });
 $('#btnFiltros').onclick = () => $('#painel').classList.toggle('aberto');
 function fecharPainelCel(){ $('#painel').classList.remove('aberto'); }
