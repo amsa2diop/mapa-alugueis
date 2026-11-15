@@ -162,12 +162,59 @@ def coletar_quintoandar():
     log(f"QuintoAndar: {len(itens)} anúncios (API informou {total})")
     return itens
 
+# ---------------- telefones ----------------
+def norm_tel(t):
+    """Número brasileiro só com DDD + número (10 ou 11 dígitos), sem 0, 55 ou código de operadora."""
+    d = re.sub(r"\D", "", str(t or ""))
+    if len(d) in (12, 13) and d.startswith("55"):
+        d = d[2:]
+    d = d.lstrip("0")
+    if len(d) > 11:
+        d = d[-11:] if d[-9] == "9" else d[-10:]
+    if len(d) not in (10, 11) or not ("11" <= d[:2] <= "99"):
+        return ""
+    return d
+
+_TEL_RE = re.compile(r"(?<!\d)(?:\+?55[\s.-]?)?\(?\s*0?([1-9]\d)\s*\)?[\s.-]*(9\s?\d{4}|[2-5]\d{3})[\s.-]?(\d{4})(?!\d)")
+
+def tel_do_texto(txt):
+    """Telefone escrito na descrição. Só aceita celular (9xxxx-xxxx) ou número com DDD entre parênteses,
+    para não confundir com preço, área ou código do anúncio."""
+    for m in _TEL_RE.finditer(txt or ""):
+        if "(" in m.group(0) or m.group(2).replace(" ", "").startswith("9") and len(m.group(2).replace(" ", "")) == 5:
+            t = norm_tel("".join(m.groups()).replace(" ", ""))
+            if t:
+                return t
+    return ""
+
+_CONTATO_SITES = {}
+def contato_do_site(site):
+    """WhatsApp e telefone que a imobiliária mostra no próprio site (uma leitura por rodada)."""
+    if site not in _CONTATO_SITES:
+        zap = tel = ""
+        try:
+            h = _get_html(site)
+            m = re.search(r"(?:wa\.me/|whatsapp\.com/send\?phone=)(\d{10,13})", h)
+            zap = norm_tel(m.group(1)) if m else ""
+            m = re.search(r'href="tel:([+\d]{8,15})"', h)
+            tel = norm_tel(m.group(1)) if m else ""
+            if not tel:   # dados estruturados da página (schema.org)
+                m = re.search(r'"telephone":"([^"]{8,25})"', h)
+                tel = norm_tel(m.group(1)) if m else ""
+            if not zap and len(tel) == 11:   # celular da imobiliária: quase sempre é o WhatsApp
+                zap = tel
+        except Exception:
+            pass
+        _CONTATO_SITES[site] = (zap, tel or zap)
+    return _CONTATO_SITES[site]
+
 # ---------------- VivaReal ----------------
 VR_URL = "https://glue-api.vivareal.com/v2/listings"
 VR_HDR = {"x-domain": ".vivareal.com.br", "Origin": "https://www.vivareal.com.br", "Referer": "https://www.vivareal.com.br/"}
 VR_CIDADES = [("Rio de Janeiro", "BR>Rio de Janeiro>NULL>Rio de Janeiro"), ("Niterói", "BR>Rio de Janeiro>NULL>Niteroi")]
 VR_CAMPOS = ("search(result(listings(listing(id,title,address,pricingInfos,usableAreas,bedrooms,bathrooms,"
-             "parkingSpaces,createdAt,updatedAt,unitTypes,unitSubTypes),medias)),totalCount)")
+             "parkingSpaces,createdAt,updatedAt,unitTypes,unitSubTypes,whatsappNumber,advertiserContact),"
+             "account(name,phones),medias)),totalCount)")
 VR_TAM = 30          # limite de página aceito pela API
 VR_FROM_MAX = 990    # a API recusa "from" acima de ~1000
 
@@ -218,6 +265,10 @@ def vr_item(x):
         "endereco": " ".join(v for v in [a.get("street"), a.get("streetNumber")] if v),
         "fotos": fotos, "titulo": L.get("title") or "", "criado": L.get("createdAt"),
         "video": next((m["url"] for m in (x.get("medias") or []) if m.get("type") in ("VIDEO", "VIDEO_TOUR") and m.get("url")), None),
+        "anunciante": (x.get("account") or {}).get("name") or "",
+        "zap": norm_tel(L.get("whatsappNumber")),
+        "tel": next((t for t in map(norm_tel, (L.get("advertiserContact") or {}).get("phones") or []) if t), "")
+               or norm_tel(L.get("whatsappNumber")),
     }
 
 def vr_faixa(cidade, locid, pmin, pmax, saida):
@@ -838,6 +889,8 @@ def coletar_imobiliarias():
             novos = 0
             for o in objs:
                 it = kenlo_item(o, imob, site)
+                if it:
+                    it["zap"], it["tel"] = contato_do_site(site)
                 if it and it["id"] not in itens:
                     novos += 1
                     itens[it["id"]] = it
@@ -875,7 +928,7 @@ def selfspin_item(v):
     fotos = [f.get("imvft_url") for f in v.get("fotos") or [] if f.get("imvft_url")]
     oculto = bool(v.get("imv_hide_address_wl"))
     return {
-        "id": f"imob-selfspin-{v.get('imv_cod_gaia')}", "fonte": "Imobiliárias", "tipo": tipo, "anunciante": "Self Spin",
+        "id": f"imob-selfspin-{v.get('imv_cod_gaia')}", "fonte": "Imobiliárias", "tipo": tipo, "anunciante": "Self Spin", "zap": contato_do_site(SELFSPIN)[0], "tel": contato_do_site(SELFSPIN)[1],
         "url": v.get("url_amiga") or f"{SELFSPIN}/imovel/apartamento/locacao/niteroi/rj/x/{v.get('imv_cod_gaia')}",
         "lat": loc.get("lat"), "lng": loc.get("lng"), "aprox": oculto,
         "aluguel": aluguel, "condominio": num(v.get("imv_preco_cond")), "iptu": num(v.get("imv_preco_iptu")),
@@ -951,21 +1004,38 @@ def loft_item(L, cidade):
     }
 
 def coletar_loft():
-    itens, paginas = {}, 0
+    # o servidor da Loft (desde 14/11/2026) devolve ao acaso páginas de outra cidade (Guarulhos, SP...)
+    # ou "não encontrado": cada página é pedida de novo até vir da cidade certa
+    itens, paginas, falhas = {}, 0, []
     for tipo, cid, nome in LOFT_BUSCAS:
         pag, total = 1, 1
         while pag <= max(total, 1) and pag <= 30:
-            lst, total = loft_pagina(f"{LOFT}/aluguel/{tipo}/{cid}" + (f"?pagina={pag}" if pag > 1 else ""))
-            paginas += 1
+            lst, ok = [], False
+            for tentativa in range(6):
+                try:
+                    l, t = loft_pagina(f"{LOFT}/aluguel/{tipo}/{cid}" + (f"?pagina={pag}" if pag > 1 else ""))
+                except Exception:
+                    l, t = None, 0
+                paginas += 1
+                if l is not None and all(sem_acento((L.get("address") or {}).get("city")) == sem_acento(nome) for L in l):
+                    lst, ok = l, True
+                    if pag == 1:
+                        total = t
+                    break
+                time.sleep(random.uniform(1.0, 2.5))
+            if not ok:
+                falhas.append(f"{tipo}/{cid} p{pag}")
             for L in lst:
                 it = loft_item(L, nome)
                 if it:
                     itens[it["id"]] = it
-            if not lst:
+            if ok and not lst:
                 break
             pag += 1
             time.sleep(random.uniform(1.0, 2.0))
-    log(f"Loft: {paginas} páginas, {len(itens)} anúncios")
+    log(f"Loft: {paginas} páginas, {len(itens)} anúncios" + (f"; falharam: {falhas}" if falhas else ""))
+    if not itens and falhas:
+        raise RuntimeError("Loft: nenhuma busca respondeu")
     return list(itens.values())
 
 # ---------------- consolidação ----------------
@@ -1177,7 +1247,7 @@ def agrupar_repetidos(lista):
                 break
         if dono:
             dono.setdefault("tambem", []).append({"fonte": v["fonte"], "url": v["url"]})
-            for k in ("condominio", "iptu", "quartos", "banheiros", "vagas", "endereco", "criado"):
+            for k in ("condominio", "iptu", "quartos", "banheiros", "vagas", "endereco", "criado", "tel", "zap"):
                 if not dono.get(k) and v.get(k):
                     dono[k] = v[k]
             if len(v.get("fotos") or []) > len(dono.get("fotos") or []):
@@ -1213,7 +1283,7 @@ def gerar_site(estado, meta):
     lista = agrupar_repetidos(lista)
     campos = ["id", "fonte", "url", "lat", "lng", "aprox", "aluguel", "condominio", "iptu", "total", "area",
               "quartos", "banheiros", "vagas", "bairro", "cidade", "endereco", "fotos", "titulo", "primeiro",
-              "criado", "inicial", "total_anterior", "mobiliado", "anunciante", "tambem", "tipo", "video", "antes"]
+              "criado", "inicial", "total_anterior", "mobiliado", "anunciante", "tambem", "tipo", "video", "antes", "tel", "zap"]
     FOTOS_SITE, DESC_SITE = 4, 180
     import hashlib, shutil
     det_dir = SITE / "det"
@@ -1233,6 +1303,10 @@ def gerar_site(estado, meta):
             if len(desc) > DESC_SITE:
                 e["desc_mais"] = 1
                 extra["descricao"] = desc[:4000]
+        if not e.get("tel"):
+            t = tel_do_texto(desc + " " + (v.get("titulo") or ""))
+            if t:
+                e["tel"] = t
         if extra:
             n = int(hashlib.md5(v["id"].encode()).hexdigest(), 16) % 64
             pedacos.setdefault(n, {})[v["id"]] = extra

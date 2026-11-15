@@ -150,7 +150,45 @@ input[type=range]{width:100%;accent-color:var(--acc);margin:0}
 .carr.tem-video.fim .play{display:flex}
 .desc{font-size:13px;color:var(--ink2);line-height:1.45;white-space:pre-line;overflow-wrap:anywhere}
 .vermais{font-size:12.5px;font-weight:600;color:var(--ink);background:none;border:0;padding:0;cursor:pointer;text-decoration:underline;text-underline-offset:2px}
-.pop .desc{max-height:180px;overflow:auto}
+.desc .txt{display:-webkit-box;-webkit-line-clamp:2;line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;white-space:normal}
+.desc .vermais{margin-top:2px}
+@media (pointer:fine){.card .carr,.pop .carr{cursor:zoom-in}}
+/* anúncio ampliado */
+.amp-tela{position:fixed;inset:0;z-index:4000;background:rgba(8,8,8,.55);-webkit-backdrop-filter:blur(3px);backdrop-filter:blur(3px);display:grid;place-items:center;padding:28px;cursor:zoom-out}
+.amp{position:relative;background:var(--bg);color:var(--ink);border-radius:16px;width:min(1080px,100%);max-height:100%;overflow-y:auto;overflow-x:hidden;box-shadow:0 20px 60px rgba(0,0,0,.35);cursor:auto;scrollbar-width:thin}
+.amp .carr{border-radius:16px 16px 0 0;aspect-ratio:16/9;max-height:64vh;width:100%}
+.amp .carr .trilho img{object-fit:contain;background:#0d0d0d}
+.amp .corpo{padding:18px 24px 6px;display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.25fr);gap:6px 36px}
+.amp .col{display:flex;flex-direction:column;gap:5px;min-width:0}
+.amp .col h4{margin:0 0 2px;font-size:11px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--ink3)}
+.amp .desc{font-size:13.5px;line-height:1.55;white-space:pre-line}
+.amp .preco b{font-size:22px}
+.amp .rodape{padding:0 24px 20px}
+.amp .rodape .barra{border-bottom:0;padding-bottom:0}
+.amp-fechar{position:absolute;top:12px;right:12px;z-index:5;width:38px;height:38px;border-radius:50%;background:rgba(255,255,255,.95);color:#141414;font-size:17px;display:grid;place-items:center;box-shadow:0 2px 8px rgba(0,0,0,.25)}
+body.com-amp{overflow:hidden}
+@media (max-width:820px){
+  .amp-tela{padding:10px}
+  .amp .carr{aspect-ratio:4/3}
+  .amp .corpo{grid-template-columns:1fr;padding:14px 16px 4px;gap:12px}
+  .amp .rodape{padding:0 16px 16px}
+}
+/* contato */
+.contato{display:flex;flex-direction:column;gap:6px;margin-top:2px}
+.tel-bt{align-self:flex-start;display:inline-flex;align-items:center;gap:7px;font-size:13px;font-weight:600;color:var(--ink);padding:5px 11px 5px 9px;border-radius:999px;border:1px solid var(--line)}
+.tel-bt:hover{border-color:var(--ink3)}
+.tel-bt svg{width:14px;height:14px;display:block}
+.tel-bt .zap{color:#25a244}
+.contato-op{display:none;gap:6px;flex-wrap:wrap}
+.contato.aberto .contato-op{display:flex}
+.contato-op a,.contato-op button{display:inline-flex;align-items:center;gap:6px;font-size:12.5px;font-weight:500;padding:6px 12px;border-radius:999px;border:1px solid var(--line);color:var(--ink);text-decoration:none}
+.contato-op a.wa{background:#25d366;border-color:#25d366;color:#08331a}
+.contato-op svg{width:14px;height:14px}
+/* street view */
+.sv-caixa{position:relative;width:min(1100px,100%);height:min(78vh,700px);display:flex;flex-direction:column;gap:8px}
+.sv-caixa iframe{flex:1;width:100%;border:0;border-radius:10px;background:#000}
+.sv-pe{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;font-size:12.5px;color:#ddd}
+.sv-pe a{color:#fff;font-weight:600}
 .video-tela{position:fixed;inset:0;z-index:5000;background:rgba(0,0,0,.85);display:grid;place-items:center;padding:16px}
 .video-caixa{width:min(960px,100%);aspect-ratio:16/9;max-height:85vh}
 .video-caixa iframe{width:100%;height:100%;border:0;border-radius:10px;background:#000}
@@ -820,6 +858,9 @@ const IC = {
   copiar: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h10"/></svg>',
   mapa: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 21s-7-6.2-7-11.5A7 7 0 0 1 19 9.5C19 14.8 12 21 12 21z"/><circle cx="12" cy="9.5" r="2.5"/></svg>',
   video: '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 5.5v13l11-6.5z"/></svg>',
+  rua: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="4.5" r="2.2"/><path d="M9 21l1-7-2-1 1.5-5h5L16 13l-2 1 1 7"/><path d="M5 19c-1.3.4-2 .9-2 1.4C3 21.8 7 23 12 23s9-1.2 9-2.6c0-.5-.7-1-2-1.4"/></svg>',
+  tel: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 16.9v3a2 2 0 0 1-2.2 2 19.8 19.8 0 0 1-8.6-3.1 19.5 19.5 0 0 1-6-6A19.8 19.8 0 0 1 2.1 4.2 2 2 0 0 1 4.1 2h3a2 2 0 0 1 2 1.7c.1.9.4 1.8.7 2.7a2 2 0 0 1-.5 2.1L8 9.8a16 16 0 0 0 6 6l1.3-1.3a2 2 0 0 1 2.1-.4c.9.3 1.8.6 2.7.7a2 2 0 0 1 1.7 2z"/></svg>',
+  zap: '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2a10 10 0 0 0-8.6 15.1L2 22l5-1.3A10 10 0 1 0 12 2zm0 18.2a8.2 8.2 0 0 1-4.2-1.2l-.3-.2-3 .8.8-2.9-.2-.3A8.2 8.2 0 1 1 12 20.2zm4.5-6.1c-.2-.1-1.5-.7-1.7-.8s-.4-.1-.6.1-.7.8-.8 1-.3.2-.5.1a6.7 6.7 0 0 1-3.3-2.9c-.3-.4.3-.4.7-1.3.1-.2 0-.3 0-.4l-.8-1.8c-.2-.5-.4-.4-.6-.4h-.5a1 1 0 0 0-.7.3 3 3 0 0 0-.9 2.2 5.2 5.2 0 0 0 1.1 2.7 11.8 11.8 0 0 0 4.5 4c1.7.7 2.3.8 3.2.6a2.7 2.7 0 0 0 1.8-1.3 2.2 2.2 0 0 0 .2-1.3c-.1-.1-.3-.2-.5-.3z"/></svg>',
   abrir: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 4h6v6"/><path d="M20 4l-9 9"/><path d="M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5"/></svg>'
 };
 // mesma barra no cartão da lista e no popup do mapa:
@@ -832,16 +873,88 @@ function barra(x, noMapa){
     <button class="bt est ${v ? 'on' : ''}" data-a="visto" data-id="${esc(x.id)}" title="${v ? 'Marcar como não visto' : 'Marcar como visto'}"><span class="i">${ICONE_OLHO_P}</span><span class="t">${v ? 'Visto' : 'Marcar visto'}</span></button>
     <span class="esp"></span>
     ${!noMapa && x.lat != null ? `<button class="bt" data-a="mapa" data-id="${esc(x.id)}" title="Ver no mapa"><span class="i">${IC.mapa}</span><span class="t">Mapa</span></button>` : ''}
+    ${x.lat != null ? `<button class="bt" data-a="rua" data-id="${esc(x.id)}" title="Ver a rua (Street View)"><span class="i">${IC.rua}</span><span class="t">Rua</span></button>` : ''}
     ${yt ? `<button class="bt" data-a="video" data-id="${esc(x.id)}" title="Ver vídeo"><span class="i">${IC.video}</span><span class="t">Vídeo</span></button>`
          : vid ? `<a class="bt" href="${esc(vid)}" target="_blank" rel="noopener" title="O vídeo está dentro do anúncio"><span class="i">${IC.video}</span><span class="t">Vídeo</span></a>` : ''}
     <button class="bt" data-a="copiar" data-id="${esc(x.id)}" title="Copiar link"><span class="i">${IC.copiar}</span><span class="t">Copiar</span></button>
     <a class="bt prim" href="${esc(x.url)}" target="_blank" rel="noopener" title="Abrir o anúncio"><span class="t">Abrir</span><span class="i">${IC.abrir}</span></a>
   </div>`;
 }
+function fmtTel(n){ return n.length === 11 ? `(${n.slice(0,2)}) ${n.slice(2,7)}-${n.slice(7)}` : `(${n.slice(0,2)}) ${n.slice(2,6)}-${n.slice(6)}`; }
+// telefone do anunciante: toca no número e escolhe WhatsApp, ligar ou copiar
+function contato(x){
+  const zap = x.zap || (x.tel && x.tel.length === 11 ? x.tel : ''), tel = x.tel || x.zap;
+  if (!tel) return '';
+  const msg = encodeURIComponent(`Olá! Vi este imóvel e tenho interesse: ${x.url}`);
+  return `<div class="contato">
+    <button class="tel-bt" data-a="tel" data-id="${esc(x.id)}" title="Contato do anunciante">${zap ? `<span class="zap">${IC.zap}</span>` : IC.tel}<span class="num">${fmtTel(zap || tel)}</span></button>
+    <div class="contato-op">
+      ${zap ? `<a class="wa" href="https://wa.me/55${zap}?text=${msg}" target="_blank" rel="noopener">${IC.zap} WhatsApp</a>` : ''}
+      <a href="tel:+55${tel}">${IC.tel} Ligar${zap && tel !== zap ? ' ' + fmtTel(tel) : ''}</a>
+      <button data-a="copiartel" data-id="${esc(x.id)}">${IC.copiar} Copiar número</button>
+    </div>
+  </div>`;
+}
+// anúncio ampliado (não é tela cheia): fotos grandes, descrição completa; fecha clicando fora, no ✕ ou com Esc
+async function abrirAmpliado(x){
+  fecharAmpliado();
+  const local = esc([x.endereco, x.bairro, x.cidade].filter(Boolean).join(', '));
+  const txt = x.desc || ((x.fonte === 'OLX' || x.fonte === 'VivaReal') ? x.titulo : '') || '';
+  document.body.insertAdjacentHTML('beforeend', `<div class="amp-tela" id="ampTela"><div class="amp" role="dialog" aria-modal="true" data-id="${esc(x.id)}">
+    <button class="amp-fechar" data-fechar aria-label="Fechar">✕</button>
+    ${carrossel(x, {semEstrela:true})}
+    <div class="corpo">
+      <div class="col">
+        <div class="preco"><b class="num">${brl(x.total)}</b><small>aluguel + cond.</small></div>
+        <div class="precos num">
+          <span>Aluguel</span><span>${brl(x.aluguel)}</span>
+          <span>Condomínio</span><span>${x.condominio ? brl(x.condominio) : '—'}</span>
+          ${x.iptu ? `<span>IPTU (à parte)</span><span>${brl(x.iptu)}</span>` : ''}
+        </div>
+        <div class="meta">${esc(detalhes(x))}${x.area ? ' · ' + brl(x.total / x.area) + '/m²' : ''}</div>
+        <div class="local">${local}${x.aprox ? ' <span class="meta">(local aproximado)</span>' : ''}</div>
+        <div class="meta">${quandoTxt(x)}${x.anunciante ? ' · ' + esc(x.anunciante) : ''}</div>
+        ${contato(x)}
+        ${tambem(x)}
+        <div class="selos">${selos(x)}</div>
+      </div>
+      <div class="col"><h4>Descrição</h4><div class="desc amp-desc">${txt ? esc(txt) + (x.desc_mais ? '…' : '') : '<span class="meta">O anúncio não tem descrição.</span>'}</div></div>
+    </div>
+    <div class="rodape">${barra(x)}</div>
+  </div></div>`);
+  document.body.classList.add('com-amp');
+  const tela = $('#ampTela');
+  tela.addEventListener('click', e => { if (e.target === tela || e.target.closest('[data-fechar]')) fecharAmpliado(); });
+  const carr = tela.querySelector('.carr[data-id]');
+  if (carr) { completarFotos(carr); carregarVizinhas(carr, 0); }
+  if (x.desc_mais) {
+    const d = await detalhe(x.id);
+    const box = tela.querySelector('.amp-desc');
+    if (box && d.descricao) box.textContent = d.descricao;
+  }
+}
+function fecharAmpliado(){ const t = $('#ampTela'); if (t) t.remove(); document.body.classList.remove('com-amp'); }
+function repintarAmpliado(x){
+  const amp = document.querySelector('#ampTela .amp'); if (!amp || amp.dataset.id !== x.id) return;
+  const b = amp.querySelector('.rodape'); if (b) b.innerHTML = barra(x);
+}
+function abrirRua(x){
+  fecharVideo();
+  const ll = `${x.lat},${x.lng}`;
+  document.body.insertAdjacentHTML('beforeend', `<div class="video-tela" id="videoTela">
+    <div class="sv-caixa">
+      <iframe src="https://maps.google.com/maps?layer=c&cbll=${ll}&cbp=11,0,0,0,0&output=svembed" allowfullscreen title="Street View"></iframe>
+      <div class="sv-pe"><span>${x.aprox ? 'Local aproximado: o anúncio não informa o endereço exato.' : esc([x.endereco, x.bairro].filter(Boolean).join(', '))}</span>
+      <a href="https://www.google.com/maps/@?api=1&map_action=pano&viewpoint=${ll}" target="_blank" rel="noopener">Abrir no Google Maps ↗</a></div>
+    </div>
+    <button class="video-fechar" aria-label="Fechar">✕</button></div>`);
+  const t = $('#videoTela');
+  t.addEventListener('click', e => { if (!e.target.closest('iframe, a')) fecharVideo(); });
+}
 function descricao(x){
   const txt = x.desc || ((x.fonte === 'OLX' || x.fonte === 'VivaReal') ? x.titulo : '');
   if (!txt) return '';
-  return `<div class="desc" data-id="${esc(x.id)}">${esc(txt)}${x.desc_mais ? `… <button class="vermais" data-a="desc" data-id="${esc(x.id)}">ver mais</button>` : ''}</div>`;
+  return `<div class="desc" data-id="${esc(x.id)}"><span class="txt">${esc(txt)}${x.desc_mais ? '…' : ''}</span><button class="vermais" data-a="ampliar" data-id="${esc(x.id)}">ver mais</button></div>`;
 }
 async function alternarDescricao(b, x){
   const box = b.closest('.desc');
@@ -860,6 +973,7 @@ function card(x){
       <div class="meta">${esc(detalhes(x))}${x.area ? ' · ' + brl(x.total / x.area) + '/m²' : ''}</div>
       <div class="local">${esc([x.endereco, x.bairro, x.cidade].filter(Boolean).join(', '))}</div>
       <div class="meta">${quandoTxt(x)}${x.anunciante ? ' · ' + esc(x.anunciante) : ''}</div>
+      ${contato(x)}
       ${descricao(x)}
       ${tambem(x)}
       <div class="selos">${selos(x)}</div>
@@ -887,6 +1001,7 @@ function popup(x){
       <div class="meta">${esc(detalhes(x))}${x.area ? ' · ' + brl(x.total / x.area) + '/m²' : ''}</div>
       <div class="local">${esc([x.endereco, x.bairro, x.cidade].filter(Boolean).join(', '))}</div>
       <div class="meta">${quandoTxt(x)}${x.anunciante ? ' · ' + esc(x.anunciante) : ''}</div>
+      ${contato(x)}
       </div></div>
       ${descricao(x)}
       ${tambem(x)}
@@ -1241,7 +1356,7 @@ function abrirVideo(yt){
   t.addEventListener('click', e => { if (!e.target.closest('iframe')) fecharVideo(); });
 }
 function fecharVideo(){ const t = $('#videoTela'); if (t) t.remove(); }
-document.addEventListener('keydown', e => { if (e.key === 'Escape') fecharVideo(); });
+document.addEventListener('keydown', e => { if (e.key !== 'Escape') return; if ($('#videoTela')) fecharVideo(); else fecharAmpliado(); });
 function verNoMapa(x){
   if (x.lat == null) return;
   trocarVista('mapa');
@@ -1283,6 +1398,11 @@ function trocarFoto(carr, passo){
   irPara(carr, i);
 }
 document.addEventListener('click', e => {
+  // computador: clicar na foto abre o anúncio ampliado
+  const foto = e.target.closest('.carr[data-id]');
+  if (foto && !TOQUE && !e.target.closest('button, a') && !foto.dataset.arrastou && !foto.closest('.amp')) {
+    const x = porId(foto.dataset.id); if (x) { e.stopPropagation(); abrirAmpliado(x); return; }
+  }
   const b = e.target.closest('[data-a]'); if (!b) return;
   const a = b.dataset.a;
   if (a === 'ant' || a === 'prox') {
@@ -1291,13 +1411,18 @@ document.addEventListener('click', e => {
   }
   const id = b.dataset.id; const x = porId(id); if (!x) return;
   if (a === 'copiar') { copiar(x.url); return; }
-  if (a === 'mapa') { verNoMapa(x); return; }
+  if (a === 'copiartel') { copiar(x.zap || x.tel); return; }
+  if (a === 'tel') { e.stopPropagation(); b.closest('.contato').classList.toggle('aberto'); return; }
+  if (a === 'ampliar') { e.stopPropagation(); abrirAmpliado(x); return; }
+  if (a === 'rua') { e.stopPropagation(); abrirRua(x); return; }
+  if (a === 'mapa') { fecharAmpliado(); verNoMapa(x); return; }
   if (a === 'video') { e.stopPropagation(); abrirVideo(ytId(x.video)); return; }
   if (a === 'desc') { e.stopPropagation(); alternarDescricao(b, x); return; }
   if (a === 'fav' || a === 'visto') {
     e.stopPropagation();
     marcar(a === 'fav' ? 'favoritos' : 'vistos', id);
     if (a === 'fav') toast(fav(id) ? 'Favoritado' : 'Removido dos favoritos');
+    repintarAmpliado(x);
   }
 });
 let arraste = null;
