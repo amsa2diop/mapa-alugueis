@@ -155,8 +155,15 @@ input[type=range]{width:100%;accent-color:var(--acc);margin:0}
 @media (pointer:fine){.card .carr,.pop .carr{cursor:zoom-in}}
 /* anúncio ampliado */
 .amp-tela{position:fixed;inset:0;z-index:4000;background:rgba(8,8,8,.55);-webkit-backdrop-filter:blur(3px);backdrop-filter:blur(3px);display:grid;place-items:center;padding:28px;cursor:zoom-out}
-.amp{position:relative;background:var(--bg);color:var(--ink);border-radius:16px;width:min(1080px,100%);max-height:100%;overflow-y:auto;overflow-x:hidden;box-shadow:0 20px 60px rgba(0,0,0,.35);cursor:auto;scrollbar-width:thin}
-.amp .carr{border-radius:16px 16px 0 0;aspect-ratio:16/9;max-height:64vh;width:100%}
+.amp{position:relative;background:var(--bg);color:var(--ink);border-radius:16px;width:min(1080px,100%);max-height:100%;display:flex;flex-direction:column;overflow:hidden;box-shadow:0 20px 60px rgba(0,0,0,.35);cursor:auto}
+.amp-tela{height:100vh;height:100dvh}
+.amp .carr{border-radius:16px 16px 0 0;aspect-ratio:auto;height:60vh;min-height:150px;flex:0 1 auto;width:100%}
+.amp .corpo,.amp .rodape{flex:none}
+.amp .col.dir{position:relative;min-height:120px}
+.amp .col.dir .caixa-desc{position:absolute;top:22px;left:0;right:0;bottom:0;overflow-y:auto;scrollbar-width:none}
+.amp .caixa-desc.corta{-webkit-mask-image:linear-gradient(#000 82%,transparent);mask-image:linear-gradient(#000 82%,transparent)}
+.amp .caixa-desc.corta.fim{-webkit-mask-image:none;mask-image:none}
+.amp .caixa-desc::-webkit-scrollbar,.amp::-webkit-scrollbar{display:none}
 .amp .carr .trilho img{object-fit:contain;background:#0d0d0d}
 .amp .corpo{padding:18px 24px 6px;display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.25fr);gap:6px 36px}
 .amp .col{display:flex;flex-direction:column;gap:5px;min-width:0}
@@ -169,8 +176,11 @@ input[type=range]{width:100%;accent-color:var(--acc);margin:0}
 body.com-amp{overflow:hidden}
 @media (max-width:820px){
   .amp-tela{padding:10px}
-  .amp .carr{aspect-ratio:4/3}
+  .amp{overflow-y:auto;scrollbar-width:none}
+  .amp .carr{height:auto;aspect-ratio:4/3;flex:none}
   .amp .corpo{grid-template-columns:1fr;padding:14px 16px 4px;gap:12px}
+  .amp .col.dir{min-height:0}
+  .amp .col.dir .caixa-desc{position:static}
   .amp .rodape{padding:0 16px 16px}
 }
 /* contato */
@@ -189,6 +199,7 @@ body.com-amp{overflow:hidden}
 .sv-caixa iframe{flex:1;width:100%;border:0;border-radius:10px;background:#000}
 .sv-pe{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;font-size:12.5px;color:#ddd}
 .sv-pe a{color:#fff;font-weight:600}
+.mini-mapa{flex:1;width:100%;border-radius:10px;overflow:hidden;background:var(--bg2)}
 .video-tela{position:fixed;inset:0;z-index:5000;background:rgba(0,0,0,.85);display:grid;place-items:center;padding:16px}
 .video-caixa{width:min(960px,100%);aspect-ratio:16/9;max-height:85vh}
 .video-caixa iframe{width:100%;height:100%;border:0;border-radius:10px;background:#000}
@@ -918,7 +929,7 @@ async function abrirAmpliado(x){
         ${tambem(x)}
         <div class="selos">${selos(x)}</div>
       </div>
-      <div class="col"><h4>Descrição</h4><div class="desc amp-desc">${txt ? esc(txt) + (x.desc_mais ? '…' : '') : '<span class="meta">O anúncio não tem descrição.</span>'}</div></div>
+      <div class="col dir"><h4>Descrição</h4><div class="caixa-desc"><div class="desc amp-desc">${txt ? esc(txt) + (x.desc_mais ? '…' : '') : '<span class="meta">O anúncio não tem descrição.</span>'}</div></div></div>
     </div>
     <div class="rodape">${barra(x)}</div>
   </div></div>`);
@@ -931,6 +942,12 @@ async function abrirAmpliado(x){
     const d = await detalhe(x.id);
     const box = tela.querySelector('.amp-desc');
     if (box && d.descricao) box.textContent = d.descricao;
+  }
+  // texto maior que o espaço: esmaece o fim (some quando se rola até o fim)
+  const cx = tela.querySelector('.caixa-desc');
+  if (cx && cx.scrollHeight > cx.clientHeight + 4) {
+    cx.classList.add('corta');
+    cx.addEventListener('scroll', () => cx.classList.toggle('fim', cx.scrollTop + cx.clientHeight >= cx.scrollHeight - 4));
   }
 }
 function fecharAmpliado(){ const t = $('#ampTela'); if (t) t.remove(); document.body.classList.remove('com-amp'); }
@@ -1355,7 +1372,26 @@ function abrirVideo(yt){
   const t = $('#videoTela');
   t.addEventListener('click', e => { if (!e.target.closest('iframe')) fecharVideo(); });
 }
-function fecharVideo(){ const t = $('#videoTela'); if (t) t.remove(); }
+let miniMapa = null;
+function fecharVideo(){ if (miniMapa) { miniMapa.remove(); miniMapa = null; } const t = $('#videoTela'); if (t) t.remove(); }
+function abrirMapaJanela(x){
+  fecharVideo();
+  document.body.insertAdjacentHTML('beforeend', `<div class="video-tela" id="videoTela">
+    <div class="sv-caixa">
+      <div id="miniMapa" class="mini-mapa"></div>
+      <div class="sv-pe"><span>${x.aprox ? 'Local aproximado: o círculo mostra a margem de erro desta fonte.' : esc([x.endereco, x.bairro].filter(Boolean).join(', '))}</span>
+      <a href="https://www.google.com/maps/search/?api=1&query=${x.lat},${x.lng}" target="_blank" rel="noopener">Abrir no Google Maps ↗</a></div>
+    </div>
+    <button class="video-fechar" aria-label="Fechar">✕</button></div>`);
+  const t = $('#videoTela');
+  t.addEventListener('click', e => { if (!e.target.closest('.mini-mapa, a')) fecharVideo(); });
+  miniMapa = L.map('miniMapa', {zoomControl:true, maxZoom:20, zoomSnap:0.5}).setView([x.lat, x.lng], x.aprox ? 15 : 17);
+  L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {attribution:'© OpenStreetMap', maxZoom:20, maxNativeZoom:19, className:'osm-cinza'}).addTo(miniMapa);
+  const ps = poligonos(MEM.perimetro);
+  if (ps.length) L.geoJSON({type:'MultiPolygon', coordinates:ps}, {style:{color:'#2f7d55', weight:2, dashArray:'6 6', fill:false}, interactive:false}).addTo(miniMapa);
+  if (x.aprox) L.circle([x.lat, x.lng], {radius: margemDe(x), color: COR[x.fonte], weight:1.5, fillOpacity:.08}).addTo(miniMapa);
+  L.marker([x.lat, x.lng], {icon: icone(x), interactive:false}).addTo(miniMapa);
+}
 document.addEventListener('keydown', e => { if (e.key !== 'Escape') return; if ($('#videoTela')) fecharVideo(); else fecharAmpliado(); });
 function verNoMapa(x){
   if (x.lat == null) return;
@@ -1415,7 +1451,7 @@ document.addEventListener('click', e => {
   if (a === 'tel') { e.stopPropagation(); b.closest('.contato').classList.toggle('aberto'); return; }
   if (a === 'ampliar') { e.stopPropagation(); abrirAmpliado(x); return; }
   if (a === 'rua') { e.stopPropagation(); abrirRua(x); return; }
-  if (a === 'mapa') { fecharAmpliado(); verNoMapa(x); return; }
+  if (a === 'mapa') { e.stopPropagation(); abrirMapaJanela(x); return; }
   if (a === 'video') { e.stopPropagation(); abrirVideo(ytId(x.video)); return; }
   if (a === 'desc') { e.stopPropagation(); alternarDescricao(b, x); return; }
   if (a === 'fav' || a === 'visto') {
