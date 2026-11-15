@@ -1304,9 +1304,9 @@ def gerar_site(estado, meta):
                 e["desc_mais"] = 1
                 extra["descricao"] = desc[:4000]
         if not e.get("tel"):
-            t = tel_do_texto(desc + " " + (v.get("titulo") or ""))
-            if t:
-                e["tel"] = t
+            tt = tel_do_texto(desc + " " + (v.get("titulo") or ""))
+            if tt:
+                e["tel"] = tt
         if extra:
             n = int(hashlib.md5(v["id"].encode()).hexdigest(), 16) % 64
             pedacos.setdefault(n, {})[v["id"]] = extra
