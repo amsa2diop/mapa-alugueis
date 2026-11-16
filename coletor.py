@@ -10,7 +10,7 @@ Fontes:
 
 Saída: dados/anuncios.json (estado) e site/dados.js (lido pela página do mapa).
 """
-import json, math, os, re, sys, time, random, unicodedata, urllib.request, urllib.parse, traceback
+import json, os, re, sys, time, random, unicodedata, urllib.request, urllib.parse, traceback
 from datetime import datetime, timezone, timedelta
 from pathlib import Path
 
@@ -1262,88 +1262,6 @@ def agrupar_repetidos(lista):
             saida.append(v)
     return saida
 
-# ---------------- Edifício dos Bancários (Rua São Sebastião 78, Ingá) ----------------
-# Prédio de interesse: venda e aluguel, sem filtro de preço nem de área, em destaque no site.
-BANC_PONTO = (-22.90003, -43.12263)
-BANC_NOVO_DIAS = 7
-
-def _banc_dist(lat, lng):
-    if not lat or not lng: return 9e9
-    return math.hypot((lat - BANC_PONTO[0]) * 111000, (lng - BANC_PONTO[1]) * 111000 * math.cos(math.radians(BANC_PONTO[0])))
-
-def _banc_e_do_predio(rua, numero, lat, lng, exato):
-    if "sebastiao" not in sem_acento(rua or "") and not (exato and _banc_dist(lat, lng) < 35): return False
-    if numero: return str(numero).strip().lstrip("0") == "78"
-    return _banc_dist(lat, lng) < 60
-
-def coletar_bancarios():
-    achados = {}
-    campos = ("search(result(listings(listing(id,address,pricingInfos,usableAreas,bedrooms,bathrooms,parkingSpaces,"
-              "createdAt),account(name),medias)),totalCount)")
-    for neg in ("SALE", "RENTAL"):
-        frm = 0
-        while True:
-            q = {"business": neg, "addressCity": "Niterói", "addressState": "Rio de Janeiro", "addressCountry": "Brasil",
-                 "addressNeighborhood": "Ingá", "addressStreet": "Rua São Sebastião", "size": "30", "from": str(frm),
-                 "includeFields": campos, "categoryPage": "RESULT"}
-            d = http_json(VR_URL + "?" + urllib.parse.urlencode(q), VR_HDR)["search"]
-            ls = (d.get("result") or {}).get("listings", [])
-            for x in ls:
-                L = x["listing"]; a = L.get("address") or {}; pt = a.get("point") or {}
-                lat = pt.get("lat") or pt.get("approximateLat"); lng = pt.get("lon") or pt.get("approximateLon")
-                if not _banc_e_do_predio(a.get("street"), a.get("streetNumber"), lat, lng, bool(pt.get("lat"))): continue
-                p = next((p for p in L.get("pricingInfos") or [] if p.get("businessType") == neg), {})
-                fotos = [m["url"].replace("{description}", "foto").replace("{action}", "crop").replace("{width}", "480")
-                         .replace("{height}", "320") for m in x.get("medias") or [] if m.get("type") == "IMAGE"][:1]
-                achados["vr-" + str(L["id"])] = {"neg": "venda" if neg == "SALE" else "aluguel", "fonte": "VivaReal",
-                    "preco": num(p.get("price")), "cond": num(p.get("monthlyCondoFee")),
-                    "area": num((L.get("usableAreas") or [0])[0]), "quartos": int(num((L.get("bedrooms") or [0])[0])),
-                    "vagas": int(num((L.get("parkingSpaces") or [0])[0])), "foto": (fotos or [""])[0],
-                    "anunciante": (x.get("account") or {}).get("name") or "", "criado": (L.get("createdAt") or "")[:10],
-                    "url": f"https://www.vivareal.com.br/imovel/apartamento-id-{L['id']}/"}
-            frm += 30
-            if not ls or frm >= min(d.get("totalCount", 0), 990): break
-            time.sleep(1)
-    hdr = {"Origin": "https://www.quintoandar.com.br", "Referer": "https://www.quintoandar.com.br/"}
-    cq = ["id", "location", "salePrice", "rent", "condominium", "area", "bedrooms", "parkingSpaces", "address", "imageList"]
-    for neg in ("SALE", "RENT"):
-        q = [(f"fields[{i}]", f) for i, f in enumerate(cq)] + [
-            ("context.deviceId", "x"), ("context.listShowing", "true"), ("context.mapShowing", "true"), ("context.numPhotos", "1"),
-            ("context.isSSR", "false"), ("filters.businessContext", neg),
-            ("filters.location.coordinate.lat", str(BANC_PONTO[0])), ("filters.location.coordinate.lng", str(BANC_PONTO[1])),
-            ("filters.location.viewport.east", "-43.1210"), ("filters.location.viewport.north", "-22.8988"),
-            ("filters.location.viewport.south", "-22.9012"), ("filters.location.viewport.west", "-43.1242"),
-            ("filters.location.countryCode", "BR"), ("filters.availability", "ANY"), ("filters.occupancy", "ANY"),
-            ("filters.origin", "HYBRID"), ("pagination.pageSize", "200"), ("pagination.offset", "0")]
-        d = http_json(QA_URL + "?" + urllib.parse.urlencode(q), hdr)
-        for h in d["hits"]["hits"]:
-            s = h["_source"]; loc = s.get("location") or {}
-            m = re.search(r"\s(\d+)\s*-", s.get("address") or "")
-            if not _banc_e_do_predio(s.get("address"), m.group(1) if m else None, loc.get("lat"), loc.get("lon"), False): continue
-            achados["qa-" + str(s["id"])] = {"neg": "venda" if neg == "SALE" else "aluguel", "fonte": "QuintoAndar",
-                "preco": num(s.get("salePrice") if neg == "SALE" else s.get("rent")), "cond": num(s.get("condominium")),
-                "area": num(s.get("area")), "quartos": int(num(s.get("bedrooms"))), "vagas": int(num(s.get("parkingSpaces"))),
-                "foto": next((f"https://www.quintoandar.com.br/img/med/{f}" for f in s.get("imageList") or []), ""),
-                "anunciante": "QuintoAndar", "criado": "",
-                "url": f"https://www.quintoandar.com.br/imovel/{s['id']}/" + ("comprar" if neg == "SALE" else "alugar")}
-    return achados
-
-def atualizar_bancarios(meta, t):
-    """Guarda quando cada anúncio do prédio apareceu pela primeira vez; o site mostra os ativos e marca os novos."""
-    try:
-        atuais = coletar_bancarios()
-    except Exception as e:
-        log("Edifício dos Bancários falhou:", repr(e)[:150]); return
-    b = meta.setdefault("bancarios", {})
-    inicio = not b  # na primeira rodada nada é "novo": é o que já estava anunciado
-    for k, v in atuais.items():
-        v["primeiro"] = (b.get(k) or {}).get("primeiro") or iso(t - timedelta(days=30) if inicio else t)
-        v["ativo"] = True
-        b[k] = v
-    for k in b:
-        if k not in atuais: b[k]["ativo"] = False
-    log(f"Edifício dos Bancários: {len(atuais)} anúncios ativos")
-
 def gerar_site(estado, meta):
     t = agora()
     lim_olx = t - timedelta(hours=OLX_VALIDADE_HORAS)
@@ -1399,9 +1317,7 @@ def gerar_site(estado, meta):
     SITE.mkdir(exist_ok=True)
     payload = {"gerado": iso(t), "perimetro_t": PERIM_T, "filtros": {"total_max": TOTAL_MAX, "area_min": AREA_MIN},
                "margens": {"exato": MARGEM_EXATO, "aprox": MARGEM_APROX, "padrao": MARGEM_APROX_PADRAO},
-               "fontes": meta.get("fontes", {}), "anuncios": enxuto,
-               "bancarios": [dict(v, id=k, novo=t - datetime.fromisoformat(v["primeiro"]) < timedelta(days=BANC_NOVO_DIAS))
-                             for k, v in (meta.get("bancarios") or {}).items() if v.get("ativo")]}
+               "fontes": meta.get("fontes", {}), "anuncios": enxuto}
     (SITE / "dados.json").write_text(json.dumps(payload, ensure_ascii=False, separators=(",", ":")), encoding="utf-8")
     import shutil
     shutil.copyfile(PERIM_PADRAO, SITE / "perimetro_padrao.json")
@@ -1588,7 +1504,6 @@ def main():
         registrar_sumidos(estado_antes, estado, t)
     except Exception as e:
         log("Registro de sumidos falhou:", repr(e)[:150])
-    atualizar_bancarios(meta, t)
     salvar(ESTADO, estado)
     salvar(META, meta)
     gerar_site(estado, meta)
