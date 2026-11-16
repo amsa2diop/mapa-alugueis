@@ -1262,6 +1262,42 @@ def agrupar_repetidos(lista):
             saida.append(v)
     return saida
 
+# ---------------- Edifício dos Bancários (Rua São Sebastião 78, Ingá) ----------------
+# Uma rotina diária na nuvem procura anúncios do prédio em qualquer site e grava no ramo claude/bancarios.
+# Aqui só lemos esse arquivo: anúncio novo vira issue no GitHub (e-mail) e faixa no site por 48 h.
+BANC_URL = "https://raw.githubusercontent.com/amsa2diop/mapa-alugueis/claude/bancarios/bancarios.json"
+
+def _abrir_issue_bancarios(novos):
+    tok, repo = os.environ.get("GITHUB_TOKEN"), os.environ.get("GITHUB_REPOSITORY")
+    if not tok or not repo: return False
+    def linha(a):
+        det = " · ".join(filter(None, [a.get("neg"), f"R$ {a['preco']:,.0f}".replace(",", ".") if a.get("preco") else "",
+                                       f"{a['area']:.0f} m²" if a.get("area") else "", f"{a['quartos']} quartos" if a.get("quartos") else ""]))
+        return f"- **{a.get('site') or 'site'}** — {det}\n  {a['url']}"
+    corpo = ("@amsa2diop anúncio novo no Edifício dos Bancários (Rua São Sebastião 78, Ingá):\n\n"
+             + "\n".join(linha(a) for a in novos) + "\n\nLista completa: https://github.com/amsa2diop/mapa-alugueis/blob/claude/bancarios/bancarios.json")
+    titulo = f"Edifício dos Bancários: {len(novos)} anúncio{'s' if len(novos) > 1 else ''} novo{'s' if len(novos) > 1 else ''}"
+    req = urllib.request.Request(f"https://api.github.com/repos/{repo}/issues", method="POST",
+                                 data=json.dumps({"title": titulo, "body": corpo}).encode(),
+                                 headers={"Authorization": f"Bearer {tok}", "Accept": "application/vnd.github+json", "User-Agent": UA})
+    try:
+        urllib.request.urlopen(req, timeout=30).read(); return True
+    except Exception as e:
+        log("Bancários: não consegui abrir a issue:", repr(e)[:150]); return False
+
+def ler_bancarios(meta, t):
+    try:
+        d = http_json(BANC_URL + f"?t={int(t.timestamp())}")
+    except Exception as e:
+        log("Bancários: não li a lista:", repr(e)[:120]); return
+    ativos = [a for a in d.get("anuncios", []) if a.get("ativo") and a.get("url")]
+    avisados = set(meta.get("bancarios_avisados") or [])
+    novos = [a for a in ativos if not a.get("semente") and a["url"] not in avisados]
+    if novos and _abrir_issue_bancarios(novos):
+        meta["bancarios_avisados"] = sorted(avisados | {a["url"] for a in novos})
+    meta["bancarios"] = [a for a in ativos if not a.get("semente")]
+    log(f"Bancários: {len(ativos)} ativos, {len(novos)} novos para avisar")
+
 def gerar_site(estado, meta):
     t = agora()
     lim_olx = t - timedelta(hours=OLX_VALIDADE_HORAS)
@@ -1317,7 +1353,7 @@ def gerar_site(estado, meta):
     SITE.mkdir(exist_ok=True)
     payload = {"gerado": iso(t), "perimetro_t": PERIM_T, "filtros": {"total_max": TOTAL_MAX, "area_min": AREA_MIN},
                "margens": {"exato": MARGEM_EXATO, "aprox": MARGEM_APROX, "padrao": MARGEM_APROX_PADRAO},
-               "fontes": meta.get("fontes", {}), "anuncios": enxuto}
+               "fontes": meta.get("fontes", {}), "anuncios": enxuto, "bancarios": meta.get("bancarios") or []}
     (SITE / "dados.json").write_text(json.dumps(payload, ensure_ascii=False, separators=(",", ":")), encoding="utf-8")
     import shutil
     shutil.copyfile(PERIM_PADRAO, SITE / "perimetro_padrao.json")
@@ -1504,6 +1540,7 @@ def main():
         registrar_sumidos(estado_antes, estado, t)
     except Exception as e:
         log("Registro de sumidos falhou:", repr(e)[:150])
+    ler_bancarios(meta, t)
     salvar(ESTADO, estado)
     salvar(META, meta)
     gerar_site(estado, meta)

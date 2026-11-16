@@ -112,6 +112,12 @@ input[type=range]{width:100%;accent-color:var(--acc);margin:0}
 .nota{font-size:12px;color:var(--ink3);line-height:1.5}
 
 .palco{position:relative;min-width:0;min-height:0}
+.banc-aviso{position:absolute;top:10px;left:50%;transform:translateX(-50%);z-index:1200;width:min(560px,calc(100% - 20px));background:var(--bg);color:var(--ink);border:2px solid #2f7d55;border-radius:14px;box-shadow:0 10px 30px rgba(0,0,0,.25);padding:10px 12px}
+.banc-aviso .cab{display:flex;align-items:center;gap:8px;font-weight:700}
+.banc-aviso .cab .x{margin-left:auto;border:0;background:#2f7d55;color:#fff;border-radius:8px;padding:4px 10px;font:inherit;font-size:.85em;cursor:pointer}
+.banc-aviso ul{list-style:none;margin:6px 0 0;padding:0;display:flex;flex-direction:column;gap:4px;max-height:40vh;overflow:auto;scrollbar-width:none}
+.banc-aviso li a{color:inherit;text-decoration:none;display:block;padding:4px 6px;border-radius:8px;background:var(--bg2)}
+.banc-aviso li small{color:var(--ink3);display:block}
 #mapa{position:absolute;inset:0}
 .vista-lista{position:absolute;inset:0;overflow:auto;display:none;background:var(--bg)}
 .palco.lista #mapa{visibility:hidden}
@@ -392,6 +398,7 @@ dialog p{font-size:13px;color:var(--ink2)}
   </aside>
 
   <main class="palco" id="palco">
+    <div class="banc-aviso" id="bancAviso" hidden></div>
     <div id="mapa"></div>
     <div class="aviso-perim" id="avisoPerim">Editando perímetro — arraste os pontos</div>
     <div class="vista-lista" id="vistaLista">
@@ -1502,12 +1509,26 @@ document.addEventListener('pointerup', soltar, true);
 document.addEventListener('pointercancel', soltar, true);
 
 /* ================= carga ================= */
+/* Edifício dos Bancários: a rotina diária acha anúncios do prédio em qualquer site; aqui só aparecem
+   os novos (até 48 h) que ainda não foram dispensados neste aparelho */
+function avisoBancarios(){
+  const el = $('#bancAviso'), vistos = LS.get('bancVistos', []), lim = Date.now() - 48 * 3600e3;
+  const L = (DADOS.bancarios || []).filter(a => !vistos.includes(a.url) && Date.parse(a.primeiro_visto) > lim);
+  if (!L.length) { el.hidden = true; return; }
+  el.hidden = false;
+  el.innerHTML = `<div class="cab">Edifício dos Bancários: ${L.length} anúncio${L.length > 1 ? 's' : ''} novo${L.length > 1 ? 's' : ''}
+      <button class="x" type="button">Já vi</button></div>
+    <ul>${L.map(a => `<li><a href="${esc(a.url)}" target="_blank" rel="noopener"><b>${a.neg === 'aluguel' ? 'Aluguel' : 'Venda'}${a.preco ? ' · ' + brl(a.preco) : ''}</b>
+      ${[a.area ? Math.round(a.area) + ' m²' : '', a.quartos ? a.quartos + ' quartos' : ''].filter(Boolean).join(' · ')}
+      <small>${esc(a.site || '')}${a.titulo ? ' · ' + esc(a.titulo) : ''}</small></a></li>`).join('')}</ul>`;
+  el.querySelector('.x').onclick = () => { LS.set('bancVistos', vistos.concat(L.map(a => a.url)).slice(-300)); el.hidden = true; };
+}
 async function carregarDados(){
   try {
     const r = await fetch('dados.json?t=' + Date.now(), {cache:'no-store'});
     if (!r.ok) throw new Error(r.status);
     const d = await r.json();
-    if (d.gerado !== DADOS.gerado) { DADOS = d; desenharFontes(); desenharAreas(); redesenhar(); }
+    if (d.gerado !== DADOS.gerado) { DADOS = d; desenharFontes(); desenharAreas(); redesenhar(); avisoBancarios(); }
   } catch (e) { $('#status').textContent = 'não consegui carregar os dados'; }
 }
 async function iniciar(){

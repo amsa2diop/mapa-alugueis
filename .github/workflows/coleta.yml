@@ -22,6 +22,7 @@ on:
 permissions:
   contents: write
   actions: write
+  issues: write
 env:
   TZ: America/Sao_Paulo
 jobs:
@@ -98,6 +99,8 @@ jobs:
         run: pip install -q playwright && python -m playwright install --with-deps chromium
       - name: Coletar e publicar
         if: steps.precisa.outputs.sim == 'true'
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
         run: python coletor.py ${{ github.event.inputs.args }}
       - name: Guardar estado
         if: always() && steps.precisa.outputs.sim == 'true'
