@@ -57,6 +57,18 @@ a{color:inherit}
 
 /* ---------- layout ---------- */
 .app{display:grid;grid-template-columns:348px 1fr;height:calc(100vh - 56px);height:calc(100dvh - 56px)}
+.banc{border:1px solid var(--line);border-radius:12px;background:var(--bg2);padding:10px 12px}
+.banc summary{cursor:pointer;list-style:none;display:flex;align-items:center;gap:8px;font-weight:600}
+.banc summary::-webkit-details-marker{display:none}
+.banc summary .q{margin-left:auto;font-weight:400;color:var(--ink3);font-size:.85em;white-space:nowrap}
+.banc .novo{background:#2f7d55;color:#fff;border-radius:10px;padding:0 7px;font-size:.75em;font-weight:600}
+.banc .sub{font-size:.8em;color:var(--ink3);margin:4px 0 0}
+.banc ul{list-style:none;margin:8px 0 0;padding:0;display:flex;flex-direction:column;gap:6px}
+.banc li a{display:flex;gap:8px;align-items:center;color:inherit;text-decoration:none;border-radius:8px;padding:3px}
+.banc li a:hover{background:var(--bg)}
+.banc li img,.banc li .sem{width:64px;height:46px;object-fit:cover;border-radius:6px;flex:none;background:var(--line)}
+.banc li b{display:block}
+.banc li span{font-size:.82em;color:var(--ink3)}
 .painel{border-right:1px solid var(--line);overflow:auto;scrollbar-width:none;padding:20px;display:flex;flex-direction:column;gap:22px}
 .painel::-webkit-scrollbar{display:none}
 .fontes-todas{display:flex;gap:6px;margin:-2px 0 8px}
@@ -336,6 +348,7 @@ dialog p{font-size:13px;color:var(--ink2)}
 
 <div class="app">
   <aside class="painel" id="painel">
+    <details class="banc" id="banc" hidden></details>
     <div class="grupo">
       <h3>Valor</h3>
       <div class="faixa"><span>Aluguel + condomínio</span><b class="num" id="o_total"></b></div>
@@ -1502,12 +1515,28 @@ document.addEventListener('pointerup', soltar, true);
 document.addEventListener('pointercancel', soltar, true);
 
 /* ================= carga ================= */
+/* Edifício dos Bancários (Rua São Sebastião 78, Ingá): prédio de interesse, venda e aluguel, sem filtros */
+function desenharBancarios(){
+  const el = $('#banc'), L = (DADOS.bancarios || []).slice().sort((a, b) => (b.novo - a.novo) || a.neg.localeCompare(b.neg) || a.preco - b.preco);
+  if (!L.length) { el.hidden = true; return; }
+  const novos = L.filter(x => x.novo).length, venda = L.filter(x => x.neg === 'venda').length;
+  const aberto = el.open;
+  el.hidden = false;
+  el.innerHTML = `<summary>Edifício dos Bancários ${novos ? `<span class="novo">${novos} ${novos > 1 ? 'novos' : 'novo'}</span>` : ''}
+      <span class="q">${venda} venda · ${L.length - venda} aluguel</span></summary>
+    <p class="sub">Rua São Sebastião, 78 · Ingá. Todos os anúncios do prédio, sem os filtros ao lado.</p>
+    <ul>${L.map(x => `<li><a href="${esc(x.url)}" target="_blank" rel="noopener">
+      ${x.foto ? `<img src="${esc(x.foto)}" alt="" loading="lazy">` : '<div class="sem"></div>'}
+      <div><b>${x.neg === 'venda' ? 'Venda' : 'Aluguel'} · ${brl(x.preco)}${x.novo ? ' <span class="novo">novo</span>' : ''}</b>
+      <span>${[x.area ? Math.round(x.area) + ' m²' : '', x.quartos ? x.quartos + ' quartos' : '', x.vagas ? x.vagas + ' vaga' + (x.vagas > 1 ? 's' : '') : 'sem vaga', x.cond ? 'cond. ' + brl(x.cond) : ''].filter(Boolean).join(' · ')}<br>${esc(x.fonte === 'QuintoAndar' ? 'QuintoAndar' : (x.anunciante || 'VivaReal'))}</span></div></a></li>`).join('')}</ul>`;
+  el.open = aberto || novos > 0;
+}
 async function carregarDados(){
   try {
     const r = await fetch('dados.json?t=' + Date.now(), {cache:'no-store'});
     if (!r.ok) throw new Error(r.status);
     const d = await r.json();
-    if (d.gerado !== DADOS.gerado) { DADOS = d; desenharFontes(); desenharAreas(); redesenhar(); }
+    if (d.gerado !== DADOS.gerado) { DADOS = d; desenharFontes(); desenharAreas(); redesenhar(); desenharBancarios(); }
   } catch (e) { $('#status').textContent = 'não consegui carregar os dados'; }
 }
 async function iniciar(){
