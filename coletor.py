@@ -579,7 +579,7 @@ def _get_html(url):
     with urllib.request.urlopen(req, timeout=40) as r:
         return r.read().decode("utf8", "replace")
 
-def cnm_pagina(url):
+def cnm_pagina(url, transacoes=("RENT", "rent")):
     t = _flight(_get_html(url))
     total = re.search(r'"totalResults":(\d+)', t)
     total = int(total.group(1)) if total else 0
@@ -605,7 +605,7 @@ def cnm_pagina(url):
     for m in re.finditer(r'"prices":\{"main"', t):
         ini = _inicio_objeto(t, m.start())   # objeto do anúncio que contém "prices"
         o = _objeto(t, ini) if ini is not None else None
-        if o and o.get("id") not in vistos and o.get("transaction") in ("RENT", "rent") and o.get("location"):
+        if o and o.get("id") not in vistos and o.get("transaction") in transacoes and o.get("location"):
             vistos.add(o.get("id"))
             if isinstance(o.get("pictures"), dict) and o["pictures"].get("list"):
                 o["_fotos"] = [CNM_IMG + f for f in _cnm_todas(o["pictures"]["list"], o["pictures"].get("count"))]
@@ -828,7 +828,16 @@ KENLO_SITES = {
 KENLO_HORAS = 6
 
 def kenlo_pagina(html):
-    out, i = [], html.find('"index":"prd_sites_listings_v2"')
+    out, vistos = [], set()
+    for idx in ('"index":"prd_sites_listings_v2"', '"index":"prd_sites_listings_new"'):
+        for o in _kenlo_indice(html, idx):
+            ref = o.get("property_full_reference") or o.get("url")
+            if ref not in vistos:
+                vistos.add(ref); out.append(o)
+    return out
+
+def _kenlo_indice(html, idx):
+    out, i = [], html.find(idx)
     while i >= 0:
         ini = _inicio_objeto(html, i)
         fim = _fecha(html, ini, "{", "}") if ini is not None else -1
@@ -837,13 +846,15 @@ def kenlo_pagina(html):
                 out.append(json.loads(html[ini:fim + 1]))
             except Exception:
                 pass
-        i = html.find('"index":"prd_sites_listings_v2"', max(i + 1, fim))
+        i = html.find(idx, max(i + 1, fim))
     return out
 
 def _faixa(v):
     return num(v[0]) if isinstance(v, list) and v else num(v)
 
 def kenlo_item(o, imob, site):
+    # o índice "new" traz alguns textos como lista de um item só
+    o = {k: (v[0] if isinstance(v, list) and v and isinstance(v[0], str) else v) for k, v in o.items()}
     aluguel = _faixa(o.get("rent_price"))
     tipo = tipo_imovel(o.get("property_type") or "")
     if not aluguel or not tipo:
@@ -1306,6 +1317,151 @@ VENDA = DADOS / "venda.json"
 VENDA_MAX = 1_000_000     # teto da coleta de venda (o filtro fino fica na página)
 VENDA_HORAS = 6           # a venda muda devagar; coleta a cada 6 h
 
+
+# ---------------- venda nas outras fontes (Chaves na Mão, imobiliárias Kenlo, Loft, OLX) ----------------
+# Reaproveita os leitores do aluguel: o item sai com o mesmo formato e vira "venda" (preco; aluguel = total = 0).
+def _como_venda(it, preco, prefixo):
+    if not it or not preco: return None
+    it.update({"neg": "venda", "preco": preco, "aluguel": 0, "total": 0})
+    it["id"] = prefixo + it["id"].split("-", 1)[1]
+    return it
+
+def coletar_chavesnamao_venda(bairros=None, max_pag=40):
+    itens, paginas = {}, 0
+    for cid, lista in (bairros or BAIRROS_BUSCA).items():
+        for b in lista:
+            pg, total = 1, 0
+            while True:
+                url = f"https://www.chavesnamao.com.br/apartamentos-a-venda/rj-{cid}/{b}/" + (f"?pg={pg}" if pg > 1 else "")
+                try:
+                    total, anuncios, pontos = cnm_pagina(url, ("SELL", "sale", "SALE"))
+                except Exception as e:
+                    log("Chaves na Mão venda: erro em", url, repr(e)[:100]); break
+                paginas += 1
+                for o in anuncios:
+                    pr = _d(o.get("prices"))
+                    preco = num(pr.get("rawPrice")) or _brl(pr.get("main"))
+                    o = {**o, "prices": {**pr, "rawPrice": preco or 1}}   # cnm_item exige preço
+                    it = _como_venda(cnm_item(o, pontos.get(o["id"]), CIDADE_NOME[cid]), preco, "cnmv-")
+                    if it: itens[it["id"]] = it
+                if not anuncios or pg * 30 >= total or pg >= max_pag: break
+                pg += 1
+                time.sleep(random.uniform(0.8, 1.5))
+    log(f"Chaves na Mão venda: {paginas} páginas, {len(itens)} anúncios")
+    return list(itens.values())
+
+def coletar_imobiliarias_venda(bairros_niteroi=None):
+    cache = carregar(GEOCACHE, {})
+    itens, paginas = {}, 0
+    for imob, site in KENLO_SITES.items():
+        antes = len(itens)
+        for b in (bairros_niteroi or BAIRROS_BUSCA.get("niteroi", [])):
+            for n in range(1, 41):
+                url = f"{site}/imoveis/a-venda/apartamento/niteroi/{b}" + (f"?pagina={n}" if n > 1 else "")
+                try:
+                    objs = kenlo_pagina(_get_html(url))
+                except Exception as e:
+                    if not (isinstance(e, urllib.error.HTTPError) and e.code == 404):
+                        log(f"Imobiliárias venda: {imob} falhou em {url}: {repr(e)[:80]}")
+                    break
+                paginas += 1
+                novos = 0
+                for o in objs:
+                    preco = _faixa(o.get("sale_price"))
+                    it = _como_venda(kenlo_item({**o, "rent_price": preco or 1}, imob, site), preco, "imobv-")
+                    if it and it["id"] not in itens:
+                        it["url"] = site + (o.get("url") or "")
+                        it["zap"], it["tel"] = contato_do_site(site)
+                        itens[it["id"]] = it; novos += 1
+                if len(objs) < 12 or novos == 0: break
+                time.sleep(random.uniform(0.6, 1.2))
+        log(f"Imobiliárias venda: {imob}: {len(itens) - antes}")
+    for it in itens.values():
+        g = geocodificar(it["bairro"], it["cidade"], cache) if it["bairro"] else None
+        if g:
+            dy, dx = _jitter(it["id"]); it["lat"], it["lng"] = g[0] + dy, g[1] + dx
+        else:
+            it["lat"] = it["lng"] = None
+    salvar(GEOCACHE, cache)
+    log(f"Imobiliárias venda: {paginas} páginas, {len(itens)} anúncios")
+    return list(itens.values())
+
+def coletar_loft_venda(cidades=(("rj/rio-de-janeiro", "Rio de Janeiro"), ("rj/niteroi", "Niterói"))):
+    itens, falhas = {}, []
+    for cid, nome in cidades:
+        pag, total = 1, 1
+        while pag <= max(total, 1) and pag <= 40:
+            lst, ok = [], False
+            for _ in range(6):
+                try:
+                    l, t = loft_pagina(f"{LOFT}/venda/apartamentos/{cid}" + (f"?pagina={pag}" if pag > 1 else ""))
+                except Exception:
+                    l, t = None, 0
+                if l is not None and all(sem_acento((L.get("address") or {}).get("city")) == sem_acento(nome) for L in l):
+                    lst, ok = l, True
+                    if pag == 1: total = t
+                    break
+                time.sleep(random.uniform(1.0, 2.5))
+            if not ok: falhas.append(f"{cid} p{pag}")
+            for L in lst:
+                if L.get("transactionType") != "FOR_SALE": continue
+                preco = num(L.get("price") or L.get("salePrice"))
+                it = _como_venda(loft_item({**L, "transactionType": "FOR_RENT", "rentalPrice": preco or 1}, nome), preco, "loftv-")
+                if it:
+                    it["url"] = it["url"].replace("tipoTransacao=aluguel", "tipoTransacao=venda")
+                    itens[it["id"]] = it
+            if ok and not lst: break
+            pag += 1
+            time.sleep(random.uniform(1.0, 2.0))
+    log(f"Loft venda: {len(itens)} anúncios" + (f"; falharam: {falhas}" if falhas else ""))
+    return list(itens.values())
+
+OLX_VENDA = "https://www.olx.com.br/imoveis/venda/apartamentos/estado-rj/rio-de-janeiro-e-regiao/"
+def coletar_olx_venda(caminhos=None, paginas_por=3, teto=None):
+    """Melhor esforço, como no aluguel: só a lista (a página do anúncio bloqueia); para no primeiro bloqueio."""
+    try:
+        import os
+        os.environ.setdefault("PLAYWRIGHT_BROWSERS_PATH", str(BASE / ".navegadores"))
+        from playwright.sync_api import sync_playwright
+    except ImportError:
+        log("OLX venda: Playwright não instalado; pulando"); return []
+    brutos, paginas, bloqueado = {}, 0, False
+    with sync_playwright() as p:
+        try:
+            b = p.chromium.launch(headless=True, channel="chromium")
+        except Exception:
+            b = p.chromium.launch(headless=True)
+        pg = b.new_context(locale="pt-BR", viewport={"width": 1366, "height": 900}, user_agent=UA).new_page()
+        for cam in (caminhos or [x for x in OLX_BAIRROS]):
+            for n in range(1, paginas_por + 1):
+                url = f"{OLX_VENDA}{cam}?pe={teto or VENDA_MAX}" + (f"&o={n}" if n > 1 else "")
+                try:
+                    r = pg.goto(url, wait_until="domcontentloaded", timeout=45000); pg.wait_for_timeout(2500)
+                except Exception as e:
+                    log("OLX venda: erro ao abrir", url, repr(e)[:80]); break
+                if (r and r.status >= 400) or "Attention Required" in pg.title() or "Just a moment" in pg.title():
+                    log(f"OLX venda: bloqueado (HTTP {r.status if r else '?'}) após {paginas} páginas"); bloqueado = True; break
+                paginas += 1
+                ads = olx_anuncios_da_pagina(pg.content())
+                for a in ads: brutos[a["listId"]] = a
+                if len(ads) < 30: break
+                time.sleep(random.uniform(2.0, 4.0))
+            if bloqueado: break
+        b.close()
+    cache = carregar(GEOCACHE, {})
+    itens = []
+    for a in brutos.values():
+        preco = _brl(a.get("price") or a.get("priceValue"))
+        it = _como_venda(olx_item(a), preco, "olxv-")
+        if not it or not it["bairro"] or sem_acento(it["cidade"]) not in CIDADES_OK: continue
+        g = geocodificar(it["bairro"], it["cidade"], cache)
+        if not g: continue
+        dy, dx = _jitter(it["id"]); it["lat"], it["lng"] = g[0] + dy, g[1] + dx
+        itens.append(it)
+    salvar(GEOCACHE, cache)
+    log(f"OLX venda: {paginas} páginas, {len(brutos)} anúncios, {len(itens)} com local")
+    return itens
+
 def _vr_venda_req(cidade, bairro, frm, pmin, pmax, campos=VR_CAMPOS, tam=VR_TAM):
     q = {"business": "SALE", "listingType": "USED", "unitTypes": "APARTMENT,HOME,CONDOMINIUM", "usageTypes": "RESIDENTIAL",
          "addressCity": cidade, "addressState": "Rio de Janeiro", "addressCountry": "Brasil", "addressNeighborhood": bairro,
@@ -1390,14 +1546,31 @@ def coletar_venda(estado, t):
         for it in _qa_venda(perim): saida[it["id"]] = it
     except Exception as e:
         log("Venda QuintoAndar falhou:", repr(e)[:150])
+    antigo_v = carregar(VENDA, {})
+    olx_t = antigo_v.get("_olx_t") if isinstance(antigo_v.get("_olx_t"), str) else None
+    olx_hoje = not olx_t or t - datetime.fromisoformat(olx_t) > timedelta(hours=24)   # OLX: uma vez por dia (bloqueia fácil)
+    fontes = [("Chaves na Mão", lambda: coletar_chavesnamao_venda(max_pag=15)), ("Imobiliárias", coletar_imobiliarias_venda),
+              ("Loft", coletar_loft_venda)] + ([("OLX", coletar_olx_venda)] if olx_hoje else [])
+    for nome, f in fontes:
+        try:
+            for it in f():
+                if it.get("preco") and it["preco"] <= VENDA_MAX: saida[it["id"]] = it
+            if nome == "OLX": saida["_olx_t"] = iso(t)
+        except Exception as e:
+            log(f"Venda {nome} falhou:", repr(e)[:150])
+    if not olx_hoje:   # mantém os do OLX da última leitura
+        saida.update({k: v for k, v in antigo_v.items() if k.startswith("olxv-")}); saida["_olx_t"] = olx_t
     antigo = carregar(VENDA, {})
+    fontes_antes = {k.split("-")[0] for k in antigo}
     for k, it in saida.items():
+        if not isinstance(it, dict): continue
         it["primeiro"] = (antigo.get(k) or {}).get("primeiro") or it.get("criado") or iso(t)
         if antigo.get(k, {}).get("preco") and antigo[k]["preco"] != it["preco"]:
             it["preco_anterior"] = antigo[k]["preco"]
         # primeira coleta: nada aparece como "novo"
-        it["inicial"] = (not antigo) or bool((antigo.get(k) or {}).get("inicial"))
-    log(f"Venda: {len(bairros)} bairros, VivaReal {n_vr}, QuintoAndar {len(saida) - n_vr}")
+        it["inicial"] = k.split("-")[0] not in fontes_antes or bool((antigo.get(k) or {}).get("inicial"))
+    from collections import Counter
+    log(f"Venda: {len(bairros)} bairros;", dict(Counter(v["fonte"] for v in saida.values() if isinstance(v, dict))))
     return saida
 
 def gerar_site(estado, meta):
@@ -1456,6 +1629,7 @@ def gerar_site(estado, meta):
           "banheiros", "vagas", "bairro", "cidade", "endereco", "titulo", "primeiro", "criado", "inicial", "anunciante", "tipo", "tel", "zap"]
     venda = []  # arquivo à parte: a página só baixa quando a pessoa escolhe Venda ou Ambos
     for v in carregar(VENDA, {}).values():
+        if not isinstance(v, dict): continue
         if sem_acento(v.get("cidade")) not in CIDADES_OK or not v.get("preco"): continue
         if not no_perimetro(v["lat"], v["lng"], perim, margem_de(v)): continue
         e = {k: v[k] for k in cv if v.get(k) not in (None, "", False, [])}
