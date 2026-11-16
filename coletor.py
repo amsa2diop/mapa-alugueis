@@ -1529,48 +1529,66 @@ def _qa_venda_ret(lngs, lats):
         time.sleep(1.5)
     return itens
 
-def coletar_venda(estado, t):
-    """Bairros = os dos aluguéis do VivaReal que caem na área desenhada; QuintoAndar pelo retângulo da área."""
+VENDA_PARTES = 6   # a venda é coletada em 6 partes, uma por rodada horária (tudo se renova a cada 6 h)
+
+def coletar_venda(estado, t, parte):
+    """Uma parte da venda por rodada; o que não é desta parte fica como estava.
+    VivaReal e Chaves na Mão: bairros divididos entre as partes. QuintoAndar, imobiliárias, Loft e OLX: uma parte cada."""
     perim = ler_perimetro()
-    bairros = {(v.get("cidade"), v.get("bairro")) for v in estado.values()
-               if v["fonte"] == "VivaReal" and v.get("lat") and v.get("bairro") and v.get("cidade")
-               and no_perimetro(v["lat"], v["lng"], perim, margem_de(v))}
-    saida = {}
-    for cidade, bairro in sorted(bairros):
+    bairros = sorted({(v.get("cidade"), v.get("bairro")) for v in estado.values()
+                      if v["fonte"] == "VivaReal" and v.get("lat") and v.get("bairro") and v.get("cidade")
+                      and no_perimetro(v["lat"], v["lng"], perim, margem_de(v))})
+    meus = [b for i, b in enumerate(bairros) if i % VENDA_PARTES == parte]
+    pares = [(cid, b) for cid, lst in sorted(BAIRROS_BUSCA.items()) for b in lst]
+    cnm = {}
+    for i, (cid, b) in enumerate(pares):
+        if i % VENDA_PARTES == parte: cnm.setdefault(cid, []).append(b)
+    antigo = {k: v for k, v in carregar(VENDA, {}).items() if isinstance(v, dict)}
+    novos, refeito = {}, []   # refeito: (fonte, filtro) dos grupos lidos nesta parte, para trocar os antigos
+
+    for cidade, bairro in meus:
+        tmp = {}
         try:
-            _vr_venda_faixa(cidade, bairro, 1, VENDA_MAX, saida)
+            _vr_venda_faixa(cidade, bairro, 1, VENDA_MAX, tmp)
+            novos.update(tmp); refeito.append(("VivaReal", lambda v, b=bairro: sem_acento(v.get("bairro")) == sem_acento(b)))
         except Exception as e:
             log(f"Venda VivaReal {bairro}: falhou", repr(e)[:100])
-    n_vr = len(saida)
     try:
-        for it in _qa_venda(perim): saida[it["id"]] = it
+        if any(cnm.values()):
+            L = coletar_chavesnamao_venda({k: v for k, v in cnm.items() if v}, max_pag=15)
+            novos.update({it["id"]: it for it in L if it["preco"] <= VENDA_MAX})
+            alvo = {sem_acento(b.replace("-", " ")) for v in cnm.values() for b in v}
+            refeito.append(("Chaves na Mão", lambda v, a=alvo: sem_acento(v.get("bairro")) in a))
     except Exception as e:
-        log("Venda QuintoAndar falhou:", repr(e)[:150])
-    antigo_v = carregar(VENDA, {})
-    olx_t = antigo_v.get("_olx_t") if isinstance(antigo_v.get("_olx_t"), str) else None
-    olx_hoje = not olx_t or t - datetime.fromisoformat(olx_t) > timedelta(hours=24)   # OLX: uma vez por dia (bloqueia fácil)
-    fontes = [("Chaves na Mão", lambda: coletar_chavesnamao_venda(max_pag=15)), ("Imobiliárias", coletar_imobiliarias_venda),
-              ("Loft", coletar_loft_venda)] + ([("OLX", coletar_olx_venda)] if olx_hoje else [])
-    for nome, f in fontes:
+        log("Venda Chaves na Mão falhou:", repr(e)[:150])
+    unica = {0: ("QuintoAndar", lambda: _qa_venda(perim)), 1: ("Imobiliárias", coletar_imobiliarias_venda),
+             2: ("Loft", coletar_loft_venda), 3: ("OLX", coletar_olx_venda)}.get(parte)
+    olx_recente = any(v.get("fonte") == "OLX" and v.get("lido") and t - datetime.fromisoformat(v["lido"]) < timedelta(hours=20)
+                      for v in antigo.values())
+    if unica and not (unica[0] == "OLX" and olx_recente):   # OLX: no máximo uma leitura por dia (bloqueia fácil)
+        nome, f = unica
         try:
-            for it in f():
-                if it.get("preco") and it["preco"] <= VENDA_MAX: saida[it["id"]] = it
-            if nome == "OLX": saida["_olx_t"] = iso(t)
+            L = [it for it in f() if it.get("preco") and it["preco"] <= VENDA_MAX]
+            for it in L: it["lido"] = iso(t)
+            if L or nome != "OLX":   # OLX bloqueado: mantém a leitura anterior
+                novos.update({it["id"]: it for it in L}); refeito.append((nome, lambda v: True))
         except Exception as e:
             log(f"Venda {nome} falhou:", repr(e)[:150])
-    if not olx_hoje:   # mantém os do OLX da última leitura
-        saida.update({k: v for k, v in antigo_v.items() if k.startswith("olxv-")}); saida["_olx_t"] = olx_t
-    antigo = carregar(VENDA, {})
+
+    saida = {k: v for k, v in antigo.items() if not any(v.get("fonte") == f and filtro(v) for f, filtro in refeito)}
     fontes_antes = {k.split("-")[0] for k in antigo}
-    for k, it in saida.items():
-        if not isinstance(it, dict): continue
-        it["primeiro"] = (antigo.get(k) or {}).get("primeiro") or it.get("criado") or iso(t)
-        if antigo.get(k, {}).get("preco") and antigo[k]["preco"] != it["preco"]:
-            it["preco_anterior"] = antigo[k]["preco"]
-        # primeira coleta: nada aparece como "novo"
-        it["inicial"] = k.split("-")[0] not in fontes_antes or bool((antigo.get(k) or {}).get("inicial"))
+    for k, it in novos.items():
+        a = antigo.get(k) or {}
+        it["primeiro"] = a.get("primeiro") or it.get("criado") or iso(t)
+        if a.get("preco") and a["preco"] != it["preco"]:
+            it["preco_anterior"] = a["preco"]
+        elif a.get("preco_anterior"):
+            it["preco_anterior"] = a["preco_anterior"]
+        it["inicial"] = k.split("-")[0] not in fontes_antes or bool(a.get("inicial"))   # fonte nova: nada aparece como "novo"
+        saida[k] = it
     from collections import Counter
-    log(f"Venda: {len(bairros)} bairros;", dict(Counter(v["fonte"] for v in saida.values() if isinstance(v, dict))))
+    log(f"Venda parte {parte + 1}/{VENDA_PARTES}: {len(meus)} bairros VivaReal, {len(novos)} lidos;",
+        dict(Counter(v["fonte"] for v in saida.values())))
     return saida
 
 def gerar_site(estado, meta):
@@ -1828,15 +1846,15 @@ def main():
         registrar_sumidos(estado_antes, estado, t)
     except Exception as e:
         log("Registro de sumidos falhou:", repr(e)[:150])
-    ult = meta.get("venda_t")
-    if (not ult or not VENDA.exists() or t - datetime.fromisoformat(ult) > timedelta(hours=VENDA_HORAS)
-            or "--completo" in sys.argv or "--venda" in sys.argv):
+    partes = range(VENDA_PARTES) if ("--venda" in sys.argv or "--completo" in sys.argv) else [meta.get("venda_parte", 0) % VENDA_PARTES]
+    for parte in partes:   # uma parte por rodada; --venda faz todas
         try:
-            v = coletar_venda(estado, t)
+            v = coletar_venda(estado, t, parte)
             if v:
                 salvar(VENDA, v); meta["venda_t"] = iso(t)
         except Exception as e:
             log("Venda falhou:", repr(e)[:200])
+    meta["venda_parte"] = (meta.get("venda_parte", 0) + 1) % VENDA_PARTES
     ler_bancarios(meta, t)
     salvar(ESTADO, estado)
     salvar(META, meta)
