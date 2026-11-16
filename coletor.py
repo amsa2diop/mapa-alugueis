@@ -1829,7 +1829,8 @@ def main():
     except Exception as e:
         log("Registro de sumidos falhou:", repr(e)[:150])
     ult = meta.get("venda_t")
-    if not ult or t - datetime.fromisoformat(ult) > timedelta(hours=VENDA_HORAS) or "--completo" in sys.argv or "--venda" in sys.argv:
+    if (not ult or not VENDA.exists() or t - datetime.fromisoformat(ult) > timedelta(hours=VENDA_HORAS)
+            or "--completo" in sys.argv or "--venda" in sys.argv):
         try:
             v = coletar_venda(estado, t)
             if v:

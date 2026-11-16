@@ -60,6 +60,7 @@ jobs:
           cp estado/*.json dados/ 2>/dev/null || true
           cp estado/coletor.log dados/ 2>/dev/null || true
           gunzip -c estado/anuncios.json.gz > dados/anuncios.json
+          if [ -f estado/venda.json.gz ]; then gunzip -c estado/venda.json.gz > dados/venda.json; fi
           git config --global user.name "github-actions[bot]"
           git config --global user.email "41898282+github-actions[bot]@users.noreply.github.com"
       - name: Precisa coletar?
@@ -107,6 +108,7 @@ jobs:
         run: |
           test -s dados/anuncios.json || exit 0
           gzip -c dados/anuncios.json > estado/anuncios.json.gz
+          if [ -s dados/venda.json ]; then gzip -c dados/venda.json > estado/venda.json.gz; fi
           for f in meta.json geocache.json perimetro.json sumidos.json coletor.log; do cp "dados/$f" estado/ 2>/dev/null || true; done
           cd estado
           git add -A
