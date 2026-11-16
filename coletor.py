@@ -231,7 +231,7 @@ def vr_req(cidade, locid, frm, pmin=None, pmax=TOTAL_MAX, ordenar=False, campos=
     s = d["search"]
     return s.get("totalCount", 0), (s.get("result") or {}).get("listings", [])
 
-def vr_item(x):
+def vr_item(x, neg="RENTAL"):
     L = x["listing"]
     a = L.get("address") or {}
     pt = a.get("point") or {}
@@ -241,9 +241,11 @@ def vr_item(x):
         pt = {**pt, "aproximated": True}
     if not lat:
         return None
-    p = next((p for p in L.get("pricingInfos") or [] if p.get("businessType") == "RENTAL"), None)
+    p = next((p for p in L.get("pricingInfos") or [] if p.get("businessType") == neg), None)
     if not p or (p.get("rentalInfo") or {}).get("period") in ("DAILY", "WEEKLY"):
         return None
+    if neg == "SALE":
+        p = {**p, "price": 0, "_venda": num(p.get("price"))}
     aluguel, condo, iptu = num(p.get("price")), num(p.get("monthlyCondoFee")), num(p.get("yearlyIptu")) / 12
     fotos = [m["url"].replace("{description}", "foto").replace("{action}", "crop")
              .replace("{width}", "640").replace("{height}", "420")
@@ -253,8 +255,9 @@ def vr_item(x):
     tipo = tipo_imovel(ut) if ut else "Apartamento"
     if not tipo:
         return None
-    return {
-        "id": f"vr-{L['id']}", "fonte": "VivaReal", "tipo": tipo,
+    extra = {"neg": "venda", "preco": p["_venda"]} if neg == "SALE" else {}
+    return {**extra,
+        "id": f"{'vv' if neg == 'SALE' else 'vr'}-{L['id']}", "fonte": "VivaReal", "tipo": tipo,
         "url": f"https://www.vivareal.com.br/imovel/{'casa' if tipo == 'Casa' else 'apartamento'}-{str(q) + '-quartos-' if q else ''}id-{L['id']}/",
         "lat": lat, "lng": lng, "aprox": bool(pt.get("aproximated")),
         "aluguel": aluguel, "condominio": condo, "iptu": round(iptu),
@@ -1298,6 +1301,105 @@ def ler_bancarios(meta, t):
     meta["bancarios"] = [a for a in ativos if not a.get("semente")]
     log(f"Bancários: {len(ativos)} ativos, {len(novos)} novos para avisar")
 
+# ---------------- imóveis à venda (VivaReal e QuintoAndar, só na área desenhada) ----------------
+VENDA = DADOS / "venda.json"
+VENDA_MAX = 1_000_000     # teto da coleta de venda (o filtro fino fica na página)
+VENDA_HORAS = 6           # a venda muda devagar; coleta a cada 6 h
+
+def _vr_venda_req(cidade, bairro, frm, pmin, pmax, campos=VR_CAMPOS, tam=VR_TAM):
+    q = {"business": "SALE", "listingType": "USED", "unitTypes": "APARTMENT,HOME,CONDOMINIUM", "usageTypes": "RESIDENTIAL",
+         "addressCity": cidade, "addressState": "Rio de Janeiro", "addressCountry": "Brasil", "addressNeighborhood": bairro,
+         "size": str(tam), "from": str(frm), "includeFields": campos, "categoryPage": "RESULT",
+         "priceMin": str(pmin), "priceMax": str(pmax)}
+    d = http_json(VR_URL + "?" + urllib.parse.urlencode(q), VR_HDR)["search"]
+    return d.get("totalCount", 0), (d.get("result") or {}).get("listings", [])
+
+def _vr_venda_faixa(cidade, bairro, pmin, pmax, saida):
+    total, _ = _vr_venda_req(cidade, bairro, 0, pmin, pmax, "search(totalCount)", 1)
+    if total > VR_FROM_MAX + VR_TAM and pmax - pmin > 5000:
+        meio = (pmin + pmax) // 2
+        _vr_venda_faixa(cidade, bairro, pmin, meio, saida); _vr_venda_faixa(cidade, bairro, meio + 1, pmax, saida); return
+    frm = 0
+    while frm < min(total, VR_FROM_MAX + VR_TAM):
+        _, ls = _vr_venda_req(cidade, bairro, frm, pmin, pmax)
+        for x in ls:
+            it = vr_item(x, "SALE")
+            if it: saida[it["id"]] = it
+        if not ls: break
+        frm += VR_TAM
+        time.sleep(random.uniform(0.8, 1.6))
+
+def _aneis(perim):
+    for f in (perim or {}).get("features", []):
+        g = f.get("geometry") or {}
+        for poli in [g["coordinates"]] if g.get("type") == "Polygon" else g.get("coordinates", []) if g.get("type") == "MultiPolygon" else []:
+            yield poli[0]
+
+def _qa_venda(perim):
+    itens = {}
+    for anel in _aneis(perim):  # um retângulo por polígono (Rio e Niterói não viram um retângulo só com a baía no meio)
+        for it in _qa_venda_ret([c[0] for c in anel], [c[1] for c in anel]): itens[it["id"]] = it
+    return list(itens.values())
+
+def _qa_venda_ret(lngs, lats):
+    base = [("fields[%d]" % i, f) for i, f in enumerate(["id", "location", "salePrice", "condominium", "iptu", "area", "bedrooms",
+            "bathrooms", "parkingSpots", "address", "neighbourhood", "regionName", "city", "type", "imageList"])] + [
+        ("context.deviceId", "buscador-local"), ("context.listShowing", "true"), ("context.mapShowing", "true"),
+        ("context.numPhotos", "4"), ("context.isSSR", "false"), ("filters.businessContext", "SALE"),
+        ("filters.location.coordinate.lat", str((min(lats) + max(lats)) / 2)), ("filters.location.coordinate.lng", str((min(lngs) + max(lngs)) / 2)),
+        ("filters.location.viewport.east", str(max(lngs) + .01)), ("filters.location.viewport.north", str(max(lats) + .01)),
+        ("filters.location.viewport.south", str(min(lats) - .01)), ("filters.location.viewport.west", str(min(lngs) - .01)),
+        ("filters.location.countryCode", "BR"), ("filters.priceRange[0].costType", "SALE_PRICE"),
+        ("filters.priceRange[0].range.min", "0"), ("filters.priceRange[0].range.max", str(VENDA_MAX)),
+        ("filters.availability", "ANY"), ("filters.occupancy", "ANY"),
+        ("filters.houseSpecs.houseTypes[0]", "APARTMENT"), ("filters.houseSpecs.houseTypes[1]", "HOUSE"), ("filters.origin", "HYBRID")]
+    hdr = {"Origin": "https://www.quintoandar.com.br", "Referer": "https://www.quintoandar.com.br/"}
+    itens, off = [], 0
+    while True:
+        d = http_json(QA_URL + "?" + urllib.parse.urlencode(base + [("pagination.pageSize", "500"), ("pagination.offset", str(off))]), hdr)
+        hits = d["hits"]["hits"]; total = d["hits"]["total"]["value"]
+        for h in hits:
+            x = h["_source"]; loc = x.get("location") or {}; tipo = tipo_imovel(x.get("type"))
+            if not loc.get("lat") or not tipo or not x.get("salePrice"): continue
+            itens.append({"id": f"qv-{x['id']}", "fonte": "QuintoAndar", "tipo": tipo, "neg": "venda",
+                "url": f"https://www.quintoandar.com.br/imovel/{x['id']}/comprar", "lat": loc["lat"], "lng": loc["lon"], "aprox": False,
+                "preco": num(x.get("salePrice")), "aluguel": 0, "total": 0, "condominio": num(x.get("condominium")), "iptu": num(x.get("iptu")),
+                "fotos": [f"https://www.quintoandar.com.br/img/med/{f}" for f in (x.get("imageList") or [])[:MAX_FOTOS]],
+                "area": num(x.get("area")), "quartos": int(num(x.get("bedrooms"))), "banheiros": int(num(x.get("bathrooms"))),
+                "vagas": int(num(x.get("parkingSpots"))), "bairro": x.get("neighbourhood") or x.get("regionName") or "",
+                "cidade": x.get("city") or "", "endereco": x.get("address") or ""})
+        off += len(hits)
+        if not hits or off >= total: break
+        time.sleep(1.5)
+    return itens
+
+def coletar_venda(estado, t):
+    """Bairros = os dos aluguéis do VivaReal que caem na área desenhada; QuintoAndar pelo retângulo da área."""
+    perim = ler_perimetro()
+    bairros = {(v.get("cidade"), v.get("bairro")) for v in estado.values()
+               if v["fonte"] == "VivaReal" and v.get("lat") and v.get("bairro") and v.get("cidade")
+               and no_perimetro(v["lat"], v["lng"], perim, margem_de(v))}
+    saida = {}
+    for cidade, bairro in sorted(bairros):
+        try:
+            _vr_venda_faixa(cidade, bairro, 1, VENDA_MAX, saida)
+        except Exception as e:
+            log(f"Venda VivaReal {bairro}: falhou", repr(e)[:100])
+    n_vr = len(saida)
+    try:
+        for it in _qa_venda(perim): saida[it["id"]] = it
+    except Exception as e:
+        log("Venda QuintoAndar falhou:", repr(e)[:150])
+    antigo = carregar(VENDA, {})
+    for k, it in saida.items():
+        it["primeiro"] = (antigo.get(k) or {}).get("primeiro") or it.get("criado") or iso(t)
+        if antigo.get(k, {}).get("preco") and antigo[k]["preco"] != it["preco"]:
+            it["preco_anterior"] = antigo[k]["preco"]
+        # primeira coleta: nada aparece como "novo"
+        it["inicial"] = (not antigo) or bool((antigo.get(k) or {}).get("inicial"))
+    log(f"Venda: {len(bairros)} bairros, VivaReal {n_vr}, QuintoAndar {len(saida) - n_vr}")
+    return saida
+
 def gerar_site(estado, meta):
     t = agora()
     lim_olx = t - timedelta(hours=OLX_VALIDADE_HORAS)
@@ -1350,6 +1452,17 @@ def gerar_site(estado, meta):
     for n, conteudo in pedacos.items():
         (det_dir / f"{n}.json").write_text(json.dumps(conteudo, ensure_ascii=False, separators=(",", ":")), encoding="utf-8")
     log(f"Repetidos entre sites juntados: {sum(len(v.get('tambem', [])) for v in lista)}")
+    cv = ["id", "fonte", "url", "lat", "lng", "aprox", "neg", "preco", "preco_anterior", "condominio", "iptu", "area", "quartos",
+          "banheiros", "vagas", "bairro", "cidade", "endereco", "titulo", "primeiro", "criado", "inicial", "anunciante", "tipo", "tel", "zap"]
+    venda = []  # arquivo à parte: a página só baixa quando a pessoa escolhe Venda ou Ambos
+    for v in carregar(VENDA, {}).values():
+        if sem_acento(v.get("cidade")) not in CIDADES_OK or not v.get("preco"): continue
+        if not no_perimetro(v["lat"], v["lng"], perim, margem_de(v)): continue
+        e = {k: v[k] for k in cv if v.get(k) not in (None, "", False, [])}
+        e["fotos"] = (v.get("fotos") or [])[:FOTOS_SITE]
+        venda.append(e)
+    (SITE / "venda.json").write_text(json.dumps({"gerado": iso(t), "anuncios": venda}, ensure_ascii=False, separators=(",", ":")), encoding="utf-8")
+    log(f"Venda no site: {len(venda)}")
     SITE.mkdir(exist_ok=True)
     payload = {"gerado": iso(t), "perimetro_t": PERIM_T, "filtros": {"total_max": TOTAL_MAX, "area_min": AREA_MIN},
                "margens": {"exato": MARGEM_EXATO, "aprox": MARGEM_APROX, "padrao": MARGEM_APROX_PADRAO},
@@ -1380,8 +1493,9 @@ def publicar():
     if not (PUBLICAR / ".git").exists():
         log("Publicação: pasta publicar/ não configurada; pulando")
         return
-    for nome in ("index.html", "dados.json", "config.json", "perimetro_padrao.json"):
-        shutil.copyfile(SITE / nome, PUBLICAR / nome)
+    for nome in ("index.html", "dados.json", "venda.json", "config.json", "perimetro_padrao.json"):
+        if (SITE / nome).exists():
+            shutil.copyfile(SITE / nome, PUBLICAR / nome)
     shutil.rmtree(PUBLICAR / "det", ignore_errors=True)
     if (SITE / "det").exists():
         shutil.copytree(SITE / "det", PUBLICAR / "det")
@@ -1540,6 +1654,14 @@ def main():
         registrar_sumidos(estado_antes, estado, t)
     except Exception as e:
         log("Registro de sumidos falhou:", repr(e)[:150])
+    ult = meta.get("venda_t")
+    if not ult or t - datetime.fromisoformat(ult) > timedelta(hours=VENDA_HORAS) or "--completo" in sys.argv or "--venda" in sys.argv:
+        try:
+            v = coletar_venda(estado, t)
+            if v:
+                salvar(VENDA, v); meta["venda_t"] = iso(t)
+        except Exception as e:
+            log("Venda falhou:", repr(e)[:200])
     ler_bancarios(meta, t)
     salvar(ESTADO, estado)
     salvar(META, meta)

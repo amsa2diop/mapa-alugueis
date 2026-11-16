@@ -112,6 +112,10 @@ input[type=range]{width:100%;accent-color:var(--acc);margin:0}
 .nota{font-size:12px;color:var(--ink3);line-height:1.5}
 
 .palco{position:relative;min-width:0;min-height:0}
+body[data-neg=venda] .so-aluguel,body[data-neg=aluguel] .so-venda{display:none}
+body:not([data-det="1"]) .det-aluguel,body[data-neg=aluguel]:not([data-det="1"]) .cond-box{display:none}
+.detalhar{border:0;background:none;color:var(--ink3);font:inherit;font-size:.85em;padding:2px 0 6px;cursor:pointer;text-decoration:underline}
+.selo-venda{display:inline-block;font-size:.7em;font-weight:700;letter-spacing:.02em;background:#2d4f86;color:#fff;border-radius:6px;padding:1px 6px;margin-left:6px;vertical-align:middle}
 .banc-aviso{position:absolute;top:10px;left:50%;transform:translateX(-50%);z-index:1200;width:min(560px,calc(100% - 20px));background:var(--bg);color:var(--ink);border:2px solid #2f7d55;border-radius:14px;box-shadow:0 10px 30px rgba(0,0,0,.25);padding:10px 12px}
 .banc-aviso .cab{display:flex;align-items:center;gap:8px;font-weight:700}
 .banc-aviso .cab .x{margin-left:auto;border:0;background:#2f7d55;color:#fff;border-radius:8px;padding:4px 10px;font:inherit;font-size:.85em;cursor:pointer}
@@ -343,13 +347,20 @@ dialog p{font-size:13px;color:var(--ink2)}
 <div class="app">
   <aside class="painel" id="painel">
     <div class="grupo">
+      <h3>Imóveis para</h3>
+      <div class="chips" id="fNeg"><button data-v="aluguel">Alugar</button><button data-v="venda">Comprar</button><button data-v="ambos">Os dois</button></div>
+    </div>
+    <div class="grupo">
       <h3>Valor</h3>
-      <div class="faixa"><span>Aluguel + condomínio</span><b class="num" id="o_total"></b></div>
+      <div class="so-venda"><div class="faixa"><span>Preço de venda</span><b class="num" id="o_preco"></b></div>
+      <div class="duplo" data-k="preco" data-min="0" data-max="1000000" data-step="10000"></div></div>
+      <div class="so-aluguel"><div class="faixa"><span>Aluguel + condomínio</span><b class="num" id="o_total"></b></div>
       <div class="duplo" data-k="total" data-min="0" data-max="15000" data-step="100"></div>
-      <div class="faixa"><span>Só aluguel</span><b class="num" id="o_aluguel"></b></div>
-      <div class="duplo" data-k="aluguel" data-min="0" data-max="15000" data-step="100"></div>
-      <div class="faixa"><span>Só condomínio</span><b class="num" id="o_condominio"></b></div>
-      <div class="duplo" data-k="condominio" data-min="0" data-max="4000" data-step="50"></div>
+      <button type="button" class="detalhar" id="btDetalhar"></button>
+      <div class="det-aluguel"><div class="faixa"><span>Só aluguel</span><b class="num" id="o_aluguel"></b></div>
+      <div class="duplo" data-k="aluguel" data-min="0" data-max="15000" data-step="100"></div></div></div>
+      <div class="cond-box"><div class="faixa"><span id="rotCond">Só condomínio</span><b class="num" id="o_condominio"></b></div>
+      <div class="duplo" data-k="condominio" data-min="0" data-max="4000" data-step="50"></div></div>
     </div>
     <div class="grupo">
       <h3>Área</h3>
@@ -363,6 +374,14 @@ dialog p{font-size:13px;color:var(--ink2)}
     <div class="grupo">
       <h3>Quartos</h3>
       <div class="chips" id="fQuartos"><button data-v="0">Todos</button><button data-v="1">1+</button><button data-v="2">2+</button><button data-v="3">3+</button></div>
+    </div>
+    <div class="grupo">
+      <h3>Banheiros</h3>
+      <div class="chips" id="fBanheiros"><button data-v="0">Todos</button><button data-v="1">1+</button><button data-v="2">2+</button><button data-v="3">3+</button></div>
+    </div>
+    <div class="grupo">
+      <h3>Vaga de carro</h3>
+      <div class="chips" id="fVagas"><button data-v="0">Tanto faz</button><button data-v="1">1+</button><button data-v="2">2+</button></div>
     </div>
     <div class="grupo">
       <h3>Anunciado</h3>
@@ -474,6 +493,9 @@ if (st.mostrar !== undefined) { st.soFav = st.mostrar === 'fav'; st.visto = st.m
 if (!st.visto) st.visto = 'todos';
 if (!st.faixas) st.faixas = {total:[0,3000], aluguel:[0,15000], condominio:[0,4000], area:[40,300]};
 if (typeof st.total === 'number') { st.faixas.total[1] = st.total; delete st.total; }
+if (!st.neg) st.neg = 'aluguel';
+st.banheiros ||= 0; st.vagas ||= 0; st.detalhe = !!st.detalhe;
+if (!st.faixas.preco) st.faixas.preco = [0, 1000000];
 const ativo = (m, id) => !!(m[id] && m[id].v);
 // a marcação do próprio anúncio vale; sem ela, herda dos ids antigos do mesmo imóvel (anúncio tirado do ar e publicado de novo)
 function marcaDe(m, x){
@@ -739,7 +761,7 @@ function noPerimetro(x){
 }
 
 /* ================= filtros ================= */
-const LIMITES = {total:15000, aluguel:15000, condominio:4000, area:300};
+const LIMITES = {total:15000, aluguel:15000, condominio:4000, area:300, preco:1000000};
 function naFaixa(k, v){
   const [a, b] = st.faixas[k];
   return v >= a && (b >= LIMITES[k] || v <= b);   // no topo da régua = sem teto
@@ -747,8 +769,11 @@ function naFaixa(k, v){
 function filtrar(){
   return DADOS.anuncios.filter(x =>
     st.fontes.includes(x.fonte) &&
-    naFaixa('total', x.total) && naFaixa('aluguel', x.aluguel) &&
-    naFaixa('condominio', x.condominio || 0) &&
+    (st.neg === 'ambos' || (x.neg || 'aluguel') === st.neg) &&
+    (x.neg === 'venda' ? naFaixa('preco', x.preco) && naFaixa('condominio', x.condominio || 0)
+                       : naFaixa('total', x.total) && (!st.detalhe || naFaixa('aluguel', x.aluguel) && naFaixa('condominio', x.condominio || 0))) &&
+    (!st.banheiros || !x.banheiros || x.banheiros >= st.banheiros) &&   // sem banheiros informados: fica
+    (!st.vagas || (x.vagas || 0) >= st.vagas) &&
     (!x.area || naFaixa('area', x.area)) &&            // sem metragem informada: fica
     (st.tipo === 'todos' || (x.tipo || 'Apartamento') === st.tipo) &&
     (!st.quartos || !x.quartos || x.quartos >= st.quartos) &&   // sem quartos informados: fica
@@ -758,11 +783,12 @@ function filtrar(){
     (!st.perim || x.lat == null || noPerimetro(x))
   );
 }
+const valor = x => x.neg === 'venda' ? x.preco : x.total;
 function ordenar(l){
   const f = {
     novo: (a, b) => (a.inicial ? 1 : 0) - (b.inicial ? 1 : 0) || new Date(dataAnuncio(b)) - new Date(dataAnuncio(a)),
-    total: (a, b) => a.total - b.total,
-    m2: (a, b) => (a.area ? a.total / a.area : 1e9) - (b.area ? b.total / b.area : 1e9),
+    total: (a, b) => valor(a) - valor(b),
+    m2: (a, b) => (a.area ? valor(a) / a.area : 1e9) - (b.area ? valor(b) / b.area : 1e9),
     area: (a, b) => (b.area || 0) - (a.area || 0)
   }[st.ordem];
   return l.sort(f);
@@ -849,6 +875,7 @@ function selos(x){
   let s = '';
   if (!x.inicial && horas(dataAnuncio(x)) <= 24) s += '<span class="selo novo">novo</span>';
   if (x.total_anterior && x.total < x.total_anterior) s += `<span class="selo baixa">baixou ${brl(x.total_anterior - x.total)}</span>`;
+  if (x.preco_anterior && x.preco < x.preco_anterior) s += `<span class="selo baixa">baixou ${brl(x.preco_anterior - x.preco)}</span>`;
   if (x.lat == null) s += '<span class="selo">sem endereço</span>';
   else if (x.aprox) s += '<span class="selo">local aproximado</span>';
   if (x.mobiliado) s += '<span class="selo">mobiliado</span>';
@@ -923,13 +950,13 @@ async function abrirAmpliado(x){
     ${carrossel(x, {semEstrela:true})}
     <div class="corpo">
       <div class="col">
-        <div class="preco"><b class="num">${brl(x.total)}</b><small>aluguel + cond.</small></div>
+        ${precoGrande(x)}
         <div class="precos num">
-          <span>Aluguel</span><span>${brl(x.aluguel)}</span>
+          ${x.neg === 'venda' ? '' : `<span>Aluguel</span><span>${brl(x.aluguel)}</span>`}
           <span>Condomínio</span><span>${x.condominio ? brl(x.condominio) : '—'}</span>
-          ${x.iptu ? `<span>IPTU (à parte)</span><span>${brl(x.iptu)}</span>` : ''}
+          ${x.iptu ? `<span>IPTU${x.neg === 'venda' ? '' : ' (à parte)'}</span><span>${brl(x.iptu)}</span>` : ''}
         </div>
-        <div class="meta">${esc(detalhes(x))}${x.area ? ' · ' + brl(x.total / x.area) + '/m²' : ''}</div>
+        <div class="meta">${esc(detalhes(x))}${x.area ? ' · ' + brl(valor(x) / x.area) + '/m²' : ''}</div>
         <div class="local">${local}${x.aprox ? ' <span class="meta">(local aproximado)</span>' : ''}</div>
         <div class="meta">${quandoTxt(x)}${x.anunciante ? ' · ' + esc(x.anunciante) : ''}</div>
         ${contato(x)}
@@ -988,13 +1015,18 @@ async function alternarDescricao(b, x){
   box.dataset.aberta = '1';
   box.innerHTML = `${esc(d.descricao || x.desc)} <button class="vermais" data-a="desc" data-id="${esc(x.id)}">ver menos</button>`;
 }
+function precoGrande(x){
+  return x.neg === 'venda'
+    ? `<div class="preco"><b class="num">${brl(x.preco)}</b><small>à venda</small><span class="selo-venda">VENDA</span></div>`
+    : `<div class="preco"><b class="num">${brl(x.total)}</b><small>aluguel + cond.</small></div>`;
+}
 function card(x){
   return `<article class="card ${visto(x) ? 'visto' : ''}">
     ${carrossel(x, {semEstrela:true})}
     <div class="info">
-      <div class="preco"><b class="num">${brl(x.total)}</b><small>aluguel + cond.</small></div>
-      <div class="quebra num">Aluguel ${brl(x.aluguel)} · Cond. ${x.condominio ? brl(x.condominio) : '—'}${x.iptu ? ' · IPTU ' + brl(x.iptu) : ''}</div>
-      <div class="meta">${esc(detalhes(x))}${x.area ? ' · ' + brl(x.total / x.area) + '/m²' : ''}</div>
+      ${precoGrande(x)}
+      <div class="quebra num">${x.neg === 'venda' ? '' : 'Aluguel ' + brl(x.aluguel) + ' · '}Cond. ${x.condominio ? brl(x.condominio) : '—'}${x.iptu ? ' · IPTU ' + brl(x.iptu) : ''}</div>
+      <div class="meta">${esc(detalhes(x))}${x.area ? ' · ' + brl(valor(x) / x.area) + '/m²' : ''}</div>
       <div class="local">${esc([x.endereco, x.bairro, x.cidade].filter(Boolean).join(', '))}</div>
       <div class="meta">${quandoTxt(x)}${x.anunciante ? ' · ' + esc(x.anunciante) : ''}</div>
       ${contato(x)}
@@ -1016,13 +1048,13 @@ function popup(x){
     ${carrossel(x, {semEstrela:true})}
     <div class="corpo">
       <div class="duas"><div>
-      <div class="preco"><b class="num">${brl(x.total)}</b><small>aluguel + cond.</small></div>
+      ${precoGrande(x)}
       <div class="precos num">
-        <span>Aluguel</span><span>${brl(x.aluguel)}</span>
+        ${x.neg === 'venda' ? '' : `<span>Aluguel</span><span>${brl(x.aluguel)}</span>`}
         <span>Condomínio</span><span>${x.condominio ? brl(x.condominio) : '—'}</span>
-        ${x.iptu ? `<span>IPTU (à parte)</span><span>${brl(x.iptu)}</span>` : ''}
+        ${x.iptu ? `<span>IPTU${x.neg === 'venda' ? '' : ' (à parte)'}</span><span>${brl(x.iptu)}</span>` : ''}
       </div></div><div>
-      <div class="meta">${esc(detalhes(x))}${x.area ? ' · ' + brl(x.total / x.area) + '/m²' : ''}</div>
+      <div class="meta">${esc(detalhes(x))}${x.area ? ' · ' + brl(valor(x) / x.area) + '/m²' : ''}</div>
       <div class="local">${esc([x.endereco, x.bairro, x.cidade].filter(Boolean).join(', '))}</div>
       <div class="meta">${quandoTxt(x)}${x.anunciante ? ' · ' + esc(x.anunciante) : ''}</div>
       ${contato(x)}
@@ -1300,10 +1332,19 @@ function chips(sel, chave, conv){
 function chips1(box, sel, chave, conv){
   const pinta = () => document.querySelectorAll(sel).forEach(bx => bx.querySelectorAll('button').forEach(b => b.classList.toggle('on', String(st[chave]) === b.dataset.v)));
   pinta();
-  box.addEventListener('click', e => { const b = e.target.closest('button'); if (!b) return; st[chave] = conv(b.dataset.v); pinta(); if (chave === 'endereco') { desenharLista(); guardarFiltros(); } else redesenhar(); });
+  box.addEventListener('click', e => { const b = e.target.closest('button'); if (!b) return; st[chave] = conv(b.dataset.v); pinta();
+    if (chave === 'neg') { document.body.dataset.neg = st.neg; pintarDetalhe(); if (st.neg !== 'aluguel') carregarVenda(); }
+    if (chave === 'endereco') { desenharLista(); guardarFiltros(); } else redesenhar(); });
   REPINTA.push(pinta);
 }
-chips('#fQuartos', 'quartos', Number); chips('#fTipo', 'tipo', String); chips('#fEndereco', 'endereco', String); chips('.fNovo', 'novo', Number);
+chips('#fNeg', 'neg', String); chips('#fBanheiros', 'banheiros', Number); chips('#fVagas', 'vagas', Number);
+function pintarDetalhe(){
+  document.body.dataset.det = st.detalhe ? '1' : '';
+  $('#btDetalhar').textContent = st.detalhe ? 'Usar só o total ▴' : 'Separar aluguel e condomínio ▾';
+  $('#rotCond').textContent = st.neg === 'aluguel' ? 'Só condomínio' : 'Condomínio';
+}
+$('#btDetalhar').addEventListener('click', () => { st.detalhe = !st.detalhe; pintarDetalhe(); redesenhar(); });
+REPINTA.push(pintarDetalhe); pintarDetalhe(); chips('#fQuartos', 'quartos', Number); chips('#fTipo', 'tipo', String); chips('#fEndereco', 'endereco', String); chips('.fNovo', 'novo', Number);
 // botões de "Mostrar": favoritos liga/desliga; vistos gira entre todos → só vistos → não vistos
 const CICLO_VISTO = {todos:'vistos', vistos:'nao', nao:'todos'};
 function pintarMostrar(){
@@ -1523,16 +1564,35 @@ function avisoBancarios(){
       <small>${esc(a.site || '')}${a.titulo ? ' · ' + esc(a.titulo) : ''}</small></a></li>`).join('')}</ul>`;
   el.querySelector('.x').onclick = () => { LS.set('bancVistos', vistos.concat(L.map(a => a.url)).slice(-300)); el.hidden = true; };
 }
+/* imóveis à venda: arquivo à parte, baixado só quando a pessoa escolhe Comprar ou Os dois */
+let VENDA_L = null, VENDA_CARREGANDO = null;
+function carregarVenda(){
+  if (VENDA_L || VENDA_CARREGANDO) return VENDA_CARREGANDO;
+  $('#status').textContent = 'carregando imóveis à venda…';
+  VENDA_CARREGANDO = fetch('venda.json?t=' + Date.now(), {cache:'no-store'}).then(r => r.ok ? r.json() : {anuncios: []})
+    .catch(() => ({anuncios: []})).then(v => {
+      VENDA_L = (v.anuncios || []).map(x => (x.neg = 'venda', x));
+      DADOS.anuncios = DADOS.anuncios.filter(x => x.neg !== 'venda').concat(VENDA_L);
+      desenharFontes(); desenharAreas(); redesenhar();
+    });
+  return VENDA_CARREGANDO;
+}
 async function carregarDados(){
   try {
     const r = await fetch('dados.json?t=' + Date.now(), {cache:'no-store'});
     if (!r.ok) throw new Error(r.status);
     const d = await r.json();
-    if (d.gerado !== DADOS.gerado) { DADOS = d; desenharFontes(); desenharAreas(); redesenhar(); avisoBancarios(); }
+    if (d.gerado !== DADOS.gerado) {
+      DADOS = d;
+      if (VENDA_L) DADOS.anuncios = DADOS.anuncios.concat(VENDA_L);
+      desenharFontes(); desenharAreas(); redesenhar(); avisoBancarios();
+    }
+    if (st.neg !== 'aluguel') carregarVenda();
   } catch (e) { $('#status').textContent = 'não consegui carregar os dados'; }
 }
 async function iniciar(){
   aplicarTema();
+  document.body.dataset.neg = st.neg;
   try { CONFIG = await (await fetch('config.json', {cache:'no-store'})).json(); } catch { CONFIG = {}; }
   if (!MEM.perimetro) { try { MEM.perimetro = await (await fetch('perimetro_padrao.json')).json(); } catch {} }
   desenharPerimetro();
