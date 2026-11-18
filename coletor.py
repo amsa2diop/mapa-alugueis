@@ -1649,7 +1649,9 @@ def gerar_site(estado, meta):
     for v in carregar(VENDA, {}).values():
         if not isinstance(v, dict): continue
         if sem_acento(v.get("cidade")) not in CIDADES_OK or not v.get("preco"): continue
-        if not no_perimetro(v["lat"], v["lng"], perim, margem_de(v)): continue
+        if v.get("lat") is None or v.get("lng") is None:   # sem coordenada: entra se o bairro é do perímetro (como no aluguel)
+            if v.get("bairro") and sem_acento(v["bairro"]) not in BAIRROS_PERIM: continue
+        elif not no_perimetro(v["lat"], v["lng"], perim, margem_de(v)): continue
         e = {k: v[k] for k in cv if v.get(k) not in (None, "", False, [])}
         e["fotos"] = (v.get("fotos") or [])[:FOTOS_SITE]
         venda.append(e)
