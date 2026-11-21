@@ -1276,6 +1276,54 @@ def agrupar_repetidos(lista):
             saida.append(v)
     return saida
 
+def agrupar_venda(lista):
+    """O mesmo apartamento à venda costuma estar em vários sites e em várias imobiliárias do mesmo site.
+    Junta quem tem mesmo preço, área igual (±1 m²), no mesmo bairro ou a ~60 m, quartos/vagas compatíveis (0 = não informado),
+    condomínio parecido (±30 ou ±10%; se um não informa, a área tem que ser idêntica) e rua compatível quando os dois informam.
+    Fica o anúncio da fonte mais completa; os outros viram 'também em' (um link por site)."""
+    lista = sorted(lista, key=lambda v: (PRIORIDADE.get(v["fonte"], 9), v["id"]))
+    baldes, saida = {}, []
+    def rua(v): return re.sub(r"[\d\W]+", "", sem_acento(v.get("endereco")))
+    for v in lista:
+        if not v.get("preco") or not v.get("area"):
+            saida.append(v); continue
+        cid, preco, area = sem_acento(v.get("cidade")), int(round(v["preco"])), int(round(v["area"]))
+        dono = None
+        for a in (area - 1, area, area + 1):
+            for q in baldes.get((cid, preco, a), []):
+                if abs(q["area"] - v["area"]) > 1: continue
+                # QuintoAndar e Loft anunciam cada unidade uma só vez: dois anúncios do mesmo site são unidades diferentes do prédio
+                if q["fonte"] == v["fonte"] and v["fonte"] in ("QuintoAndar", "Loft"): continue
+                perto = (q.get("lat") is not None and v.get("lat") is not None
+                         and abs(q["lat"] - v["lat"]) < 0.0006 and abs(q["lng"] - v["lng"]) < 0.0006)
+                # mesmo ponto, preço e área: condomínio e nº de quartos que divergem entre sites são diferença de cadastro, não outro apartamento
+                if q.get("quartos") and v.get("quartos") and abs(q["quartos"] - v["quartos"]) > (1 if perto else 0): continue
+                if q.get("vagas") and v.get("vagas") and q["vagas"] != v["vagas"]: continue
+                qc, vc = q.get("condominio") or 0, v.get("condominio") or 0
+                if qc and vc:
+                    if not perto and abs(qc - vc) > max(30, 0.10 * max(qc, vc)): continue
+                elif q["area"] != v["area"]: continue
+                ra, rb = rua(q), rua(v)
+                if ra and rb and ra not in rb and rb not in ra: continue
+                bq, bv = sem_acento(q.get("bairro")), sem_acento(v.get("bairro"))
+                if not (perto or (bq and bq == bv) or (ra and ra == rb)): continue
+                dono = q; break
+            if dono: break
+        if dono:
+            if not any(t["fonte"] == v["fonte"] for t in dono.get("tambem", [])):
+                dono.setdefault("tambem", []).append({"fonte": v["fonte"], "url": v["url"]})
+            for k in ("condominio", "iptu", "quartos", "banheiros", "vagas", "endereco", "criado", "tel", "zap", "anunciante"):
+                if not dono.get(k) and v.get(k): dono[k] = v[k]
+            if len(v.get("fotos") or []) > len(dono.get("fotos") or []): dono["fotos"] = v["fotos"]
+            if (dono.get("lat") is None or dono.get("aprox")) and v.get("lat") is not None and not v.get("aprox"):
+                dono["lat"], dono["lng"], dono["aprox"] = v["lat"], v["lng"], False
+            if v.get("primeiro") and (not dono.get("primeiro") or v["primeiro"] < dono["primeiro"]): dono["primeiro"] = v["primeiro"]
+            if v.get("inicial") is False: dono["inicial"] = False
+        else:
+            baldes.setdefault((cid, preco, area), []).append(v)
+            saida.append(v)
+    return saida
+
 # ---------------- Edifício dos Bancários (Rua São Sebastião 78, Ingá) ----------------
 # Uma rotina diária na nuvem procura anúncios do prédio em qualquer site e grava no ramo claude/bancarios.
 # Aqui só lemos esse arquivo: anúncio novo vira issue no GitHub (e-mail) e faixa no site por 48 h.
@@ -1644,17 +1692,21 @@ def gerar_site(estado, meta):
         (det_dir / f"{n}.json").write_text(json.dumps(conteudo, ensure_ascii=False, separators=(",", ":")), encoding="utf-8")
     log(f"Repetidos entre sites juntados: {sum(len(v.get('tambem', [])) for v in lista)}")
     cv = ["id", "fonte", "url", "lat", "lng", "aprox", "neg", "preco", "preco_anterior", "condominio", "iptu", "area", "quartos",
-          "banheiros", "vagas", "bairro", "cidade", "endereco", "titulo", "primeiro", "criado", "inicial", "anunciante", "tipo", "tel", "zap"]
-    venda = []  # arquivo à parte: a página só baixa quando a pessoa escolhe Venda ou Ambos
+          "banheiros", "vagas", "bairro", "cidade", "endereco", "titulo", "primeiro", "criado", "inicial", "anunciante", "tipo", "tel", "zap", "tambem"]
+    venda, brutos_v = [], []  # arquivo à parte: a página só baixa quando a pessoa escolhe Venda ou Ambos
     for v in carregar(VENDA, {}).values():
         if not isinstance(v, dict): continue
         if sem_acento(v.get("cidade")) not in CIDADES_OK or not v.get("preco"): continue
         if v.get("lat") is None or v.get("lng") is None:   # sem coordenada: entra se o bairro é do perímetro (como no aluguel)
             if v.get("bairro") and sem_acento(v["bairro"]) not in BAIRROS_PERIM: continue
         elif not no_perimetro(v["lat"], v["lng"], perim, margem_de(v)): continue
+        brutos_v.append(dict(v))
+    n_antes = len(brutos_v)
+    for v in agrupar_venda(brutos_v):
         e = {k: v[k] for k in cv if v.get(k) not in (None, "", False, [])}
         e["fotos"] = (v.get("fotos") or [])[:FOTOS_SITE]
         venda.append(e)
+    log(f"Venda: {n_antes} anúncios, {n_antes - len(venda)} repetidos juntados")
     (SITE / "venda.json").write_text(json.dumps({"gerado": iso(t), "anuncios": venda}, ensure_ascii=False, separators=(",", ":")), encoding="utf-8")
     log(f"Venda no site: {len(venda)}")
     SITE.mkdir(exist_ok=True)
