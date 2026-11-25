@@ -799,10 +799,13 @@ function ordenar(l){
 const DET = {};
 function bigMod64(hex){ let r = 0; for (const ch of hex) r = (r * 16 + parseInt(ch, 16)) % 64; return r; }
 async function detalhe(id){
-  const n = bigMod64(md5(id));
-  if (!DET[n]) DET[n] = fetch(`det/${n}.json?g=${encodeURIComponent(DADOS.gerado || '')}`).then(r => r.ok ? r.json() : {}).catch(() => ({}));
-  return (await DET[n])[id] || {};
+  // venda tem pasta própria (detv/, 256 pedaços); aluguel em det/ (64 pedaços)
+  const venda = (porId(id) || {}).neg === 'venda', hex = md5(id);
+  const n = venda ? bigModN(hex, 256) : bigMod64(hex), arq = `${venda ? 'detv' : 'det'}/${n}.json`;
+  if (!DET[arq]) DET[arq] = fetch(`${arq}?g=${encodeURIComponent(DADOS.gerado || '')}`).then(r => r.ok ? r.json() : {}).catch(() => ({}));
+  return (await DET[arq])[id] || {};
 }
+function bigModN(hex, m){ let r = 0; for (const ch of hex) r = (r * 16 + parseInt(ch, 16)) % m; return r; }
 // md5 compacto (domínio público, baseado no algoritmo de Joseph Myers)
 function md5(str){
   const k = [], s = [7,12,17,22,7,12,17,22,7,12,17,22,7,12,17,22,5,9,14,20,5,9,14,20,5,9,14,20,5,9,14,20,4,11,16,23,4,11,16,23,4,11,16,23,4,11,16,23,6,10,15,21,6,10,15,21,6,10,15,21,6,10,15,21];

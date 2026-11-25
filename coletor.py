@@ -1661,7 +1661,7 @@ def gerar_site(estado, meta):
     campos = ["id", "fonte", "url", "lat", "lng", "aprox", "aluguel", "condominio", "iptu", "total", "area",
               "quartos", "banheiros", "vagas", "bairro", "cidade", "endereco", "fotos", "titulo", "primeiro",
               "criado", "inicial", "total_anterior", "mobiliado", "anunciante", "tambem", "tipo", "video", "antes", "tel", "zap"]
-    FOTOS_SITE, DESC_SITE = 4, 180
+    FOTOS_SITE, DESC_SITE, FOTOS_VENDA = 4, 180, 30
     import hashlib, shutil
     det_dir = SITE / "det"
     shutil.rmtree(det_dir, ignore_errors=True)
@@ -1702,10 +1702,34 @@ def gerar_site(estado, meta):
         elif not no_perimetro(v["lat"], v["lng"], perim, margem_de(v)): continue
         brutos_v.append(dict(v))
     n_antes = len(brutos_v)
+    # como no aluguel: o arquivo principal leva 4 fotos e o começo da descrição; o resto fica em detv/<n>.json
+    # (pasta própria e 256 pedaços, porque a venda tem muito mais anúncios; até FOTOS_VENDA fotos por anúncio)
+    pedacos_v = {}
     for v in agrupar_venda(brutos_v):
         e = {k: v[k] for k in cv if v.get(k) not in (None, "", False, [])}
-        e["fotos"] = (v.get("fotos") or [])[:FOTOS_SITE]
+        fotos, desc = (v.get("fotos") or [])[:FOTOS_VENDA], re.sub(r"\s+\n", "\n", (v.get("descricao") or "")).strip()
+        e["fotos"] = fotos[:FOTOS_SITE]
+        extra = {}
+        if len(fotos) > FOTOS_SITE:
+            e["nf"] = len(fotos)
+            extra["fotos"] = fotos
+        if desc:
+            e["desc"] = desc[:DESC_SITE]
+            if len(desc) > DESC_SITE:
+                e["desc_mais"] = 1
+                extra["descricao"] = desc[:4000]
+        if not e.get("tel"):
+            tt = tel_do_texto(desc + " " + (v.get("titulo") or ""))
+            if tt: e["tel"] = tt
+        if extra:
+            n = int(hashlib.md5(v["id"].encode()).hexdigest(), 16) % 256
+            pedacos_v.setdefault(n, {})[v["id"]] = extra
         venda.append(e)
+    detv = SITE / "detv"
+    shutil.rmtree(detv, ignore_errors=True)
+    detv.mkdir(parents=True, exist_ok=True)
+    for n, conteudo in pedacos_v.items():
+        (detv / f"{n}.json").write_text(json.dumps(conteudo, ensure_ascii=False, separators=(",", ":")), encoding="utf-8")
     log(f"Venda: {n_antes} anúncios, {n_antes - len(venda)} repetidos juntados")
     (SITE / "venda.json").write_text(json.dumps({"gerado": iso(t), "anuncios": venda}, ensure_ascii=False, separators=(",", ":")), encoding="utf-8")
     log(f"Venda no site: {len(venda)}")
@@ -1742,9 +1766,10 @@ def publicar():
     for nome in ("index.html", "dados.json", "venda.json", "config.json", "perimetro_padrao.json"):
         if (SITE / nome).exists():
             shutil.copyfile(SITE / nome, PUBLICAR / nome)
-    shutil.rmtree(PUBLICAR / "det", ignore_errors=True)
-    if (SITE / "det").exists():
-        shutil.copytree(SITE / "det", PUBLICAR / "det")
+    for pasta in ("det", "detv"):
+        shutil.rmtree(PUBLICAR / pasta, ignore_errors=True)
+        if (SITE / pasta).exists():
+            shutil.copytree(SITE / pasta, PUBLICAR / pasta)
     (PUBLICAR / ".nojekyll").touch()
     git("add", "-A")
     if not git("status", "--porcelain").strip():
