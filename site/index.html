@@ -141,7 +141,7 @@ body:not([data-det="1"]) .det-aluguel,body[data-neg=aluguel]:not([data-det="1"])
 
 /* ---------- cartão ---------- */
 .card{display:flex;flex-direction:column;gap:10px}
-.card.visto:hover .info,.card.visto:hover .carr{opacity:1}
+.card.oculto:hover .info,.card.oculto:hover .carr{opacity:1}
 .carr{position:relative;aspect-ratio:3/2;border-radius:var(--r);overflow:hidden;background:var(--bg2);user-select:none;touch-action:pan-y}
 .carr{cursor:grab}
 .carr.arrastando{cursor:grabbing}
@@ -247,8 +247,13 @@ body.com-amp{overflow:hidden}
 .ic:hover{border-color:var(--ink3);color:var(--ink)}
 .ic.on{background:var(--acc);border-color:var(--acc);color:var(--acc-ink)}
 .ic.on.fav{background:transparent;border-color:var(--star);color:var(--star)}
-.card.visto .carr,.card.visto .info>:not(.barra){opacity:.55}
-.card.visto:hover .info>*{opacity:1}
+.card.oculto .carr,.card.oculto .info>:not(.barra){opacity:.55}
+.card.oculto:hover .info>*{opacity:1}
+.selo-breve,.selo-visto{font-size:.7em;font-weight:700;letter-spacing:.02em;border-radius:6px;padding:1px 6px;margin-left:6px;vertical-align:middle;white-space:nowrap}
+.selo-breve{display:inline-block;background:#b54708;color:#fff}
+.selo-visto{display:none;background:var(--bg2);border:1px solid var(--line);color:var(--ink2)}
+.card.aberto .selo-visto{display:inline-block}
+.card.aberto .preco b{color:var(--ink2)}
 .info,.pop .corpo{container-type:inline-size}
 .barra{display:flex;align-items:center;gap:6px;margin-top:10px;padding-bottom:14px;border-bottom:1px solid var(--line)}
 .pop .barra{padding-bottom:0;border-bottom:none}
@@ -301,15 +306,29 @@ body.com-amp{overflow:hidden}
 .leaflet-bar{border:1px solid var(--line)!important;box-shadow:none!important}
 .leaflet-control-attribution{background:color-mix(in srgb,var(--bg) 80%,transparent)!important;color:var(--ink3)!important}
 .leaflet-control-attribution a{color:var(--ink2)!important}
-.pin{width:14px;height:14px;border-radius:50%;border:2px solid var(--bg);box-shadow:0 0 0 1px rgba(0,0,0,.3)}
-@media (pointer:fine){.pin{width:18px;height:18px}.clu{font-size:13.5px}}
-.pin.visto{opacity:.35}
-.pin.fav{box-shadow:0 0 0 2px var(--star)}
-.pin.novo{box-shadow:0 0 0 2px var(--ok)}
+/* etiqueta de preço no mapa: branca = ainda não aberta; cinza = já aberta */
+.etq{position:absolute;left:0;top:0;transform:translate(-50%,-50%);display:inline-flex;align-items:center;gap:5px;white-space:nowrap;padding:3px 8px 3px 6px;border-radius:999px;background:#fff;color:#141414;border:2px solid transparent;box-shadow:0 0 0 1px rgba(0,0,0,.22),0 2px 6px rgba(0,0,0,.22);font:700 12px/1.3 Inter,system-ui,sans-serif;font-variant-numeric:tabular-nums;cursor:pointer}
+.etq i{width:8px;height:8px;border-radius:50%;flex:none}
+.etq small{font-size:9.5px;font-weight:700;text-transform:uppercase;color:#b54708}
+.etq .est{color:var(--star);font-size:13px;line-height:1}
+.etq.venda{color:#2d4f86}
+.etq.novo{border-color:var(--ok)}
+.etq.breve{border-style:dashed;border-color:#b54708}
+.etq.fav{border-style:solid;border-color:var(--star)}
+.etq.aberto{background:#cbcbc5;color:#5b5b55;box-shadow:0 0 0 1px rgba(0,0,0,.18)}
+.etq.aberto i{opacity:.55}
+.etq.oculto{opacity:.5;text-decoration:line-through}
+.etq.ativo{background:#141414;color:#fff;box-shadow:0 0 0 2px #fff,0 3px 10px rgba(0,0,0,.4)}
+.etq.ativo i{opacity:1}
+:root[data-theme="dark"] .etq.aberto{background:#4a4a45;color:#b9b9b3}
+:root[data-theme="dark"] .etq.ativo{background:#2f7d55;color:#fff}
+@media (pointer:fine){.etq{font-size:13px}.clu{font-size:13.5px}}
 .clu{border-radius:50%;background:var(--clu);color:var(--clu-ink);display:grid;place-items:center;font:600 12px Inter,sans-serif;box-shadow:0 0 0 3px color-mix(in srgb,var(--clu) 18%,transparent);cursor:pointer}
 .aviso-perim{position:absolute;left:50%;top:12px;transform:translateX(-50%);z-index:900;background:var(--acc);color:var(--acc-ink);font-size:13px;padding:8px 14px;border-radius:999px;display:none;white-space:nowrap}
 .toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%) translateY(20px);background:var(--acc);color:var(--acc-ink);padding:9px 16px;border-radius:999px;font-size:13px;opacity:0;transition:.2s;z-index:3000;pointer-events:none}
 .toast.on{opacity:1;transform:translateX(-50%)}
+.toast.com-acao.on{pointer-events:auto;display:flex;align-items:center;gap:12px;white-space:nowrap}
+.toast button{color:inherit;font-weight:700;text-decoration:underline}
 
 dialog{border:1px solid var(--line);border-radius:14px;background:var(--bg);color:var(--ink);padding:24px;max-width:400px;width:calc(100% - 32px)}
 dialog::backdrop{background:rgba(0,0,0,.35)}
@@ -389,7 +408,7 @@ dialog p{font-size:13px;color:var(--ink2)}
     </div>
     <div class="grupo">
       <h3>Mostrar</h3>
-      <div class="chips mostrar"><button class="tg" data-tg="fav">★ Favoritos</button><button class="tg" data-tg="visto"></button></div>
+      <div class="chips mostrar"><button class="tg" data-tg="fav">★ Favoritos</button><button class="tg" data-tg="oculto"></button></div>
     </div>
     <div class="grupo">
       <div class="cab-fontes"><h3>Fontes</h3>
@@ -423,7 +442,7 @@ dialog p{font-size:13px;color:var(--ink2)}
     <div class="vista-lista" id="vistaLista">
       <div class="cab-lista">
         <div class="meta num" id="contLista"></div>
-        <div class="chips mostrar"><button class="tg" data-tg="fav">★ Favoritos</button><button class="tg" data-tg="visto"></button></div>
+        <div class="chips mostrar"><button class="tg" data-tg="fav">★ Favoritos</button><button class="tg" data-tg="oculto"></button></div>
         <div class="chips fNovo"><button data-v="0">Qualquer data</button><button data-v="24">24 h</button><button data-v="72">3 dias</button><button data-v="168">7 dias</button></div>
         <div class="chips" id="fEndereco" title="Sem endereço: o bairro é do seu perímetro, mas o site não informou o local exato">
           <button data-v="todos">Todos</button><button data-v="com">Com endereço</button><button data-v="sem">Sem endereço<span class="num" id="endSemN"></span></button>
@@ -443,7 +462,7 @@ dialog p{font-size:13px;color:var(--ink2)}
 
 <dialog id="dlgConta">
   <h2 id="dlgTitulo">Sincronizar entre aparelhos</h2>
-  <p id="dlgTexto">Entre com sua conta Google. Favoritos, vistos e perímetro passam a valer em todos os aparelhos em que você entrar com a mesma conta.</p>
+  <p id="dlgTexto">Entre com sua conta Google. Favoritos, ocultos, vistos e perímetro passam a valer em todos os aparelhos em que você entrar com a mesma conta.</p>
   <button class="google" id="btGoogle"><svg width="18" height="18" viewBox="0 0 48 48" aria-hidden="true"><path fill="#FFC107" d="M43.6 20.5H42V20H24v8h11.3C33.7 32.7 29.2 36 24 36c-6.6 0-12-5.4-12-12s5.4-12 12-12c3.1 0 5.8 1.2 7.9 3.1l5.7-5.7C34 6.1 29.3 4 24 4 12.9 4 4 12.9 4 24s8.9 20 20 20 20-8.9 20-20c0-1.3-.1-2.4-.4-3.5z"/><path fill="#FF3D00" d="M6.3 14.7l6.6 4.8C14.7 15.1 19 12 24 12c3.1 0 5.8 1.2 7.9 3.1l5.7-5.7C34 6.1 29.3 4 24 4 16.3 4 9.7 8.3 6.3 14.7z"/><path fill="#4CAF50" d="M24 44c5.2 0 9.9-2 13.4-5.2l-6.2-5.2C29.2 35.1 26.7 36 24 36c-5.2 0-9.6-3.3-11.3-8l-6.5 5C9.5 39.6 16.2 44 24 44z"/><path fill="#1976D2" d="M43.6 20.5H42V20H24v8h11.3c-.8 2.2-2.2 4.2-4.1 5.6l6.2 5.2C37 39.2 44 34 44 24c0-1.3-.1-2.4-.4-3.5z"/></svg><span>Entrar com Google</span></button>
   <div class="botoes"><button class="botao" id="btFechar">Fechar</button><button class="botao" id="btSairConta" style="display:none">Sair desta conta</button></div>
 </dialog>
@@ -465,6 +484,10 @@ const brl = v => 'R$ ' + Math.round(v || 0).toLocaleString('pt-BR');
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const horas = iso => (Date.now() - new Date(iso).getTime()) / 36e5;
 const dataAnuncio = x => x.criado || x.primeiro;
+// quando o imóvel (qualquer versão do anúncio) apareceu: um repost não conta como novo
+const desdeDe = x => x.desde || dataAnuncio(x);
+const antigo = x => !!(x.inicial || x.velho);
+const ehNovo = (x, h = 24) => !antigo(x) && horas(desdeDe(x)) <= h;
 function quando(iso){
   const h = horas(iso);
   if (h < 1) return 'há ' + Math.max(1, Math.round(h * 60)) + ' min';
@@ -472,7 +495,11 @@ function quando(iso){
   const d = Math.round(h / 24);
   return d < 60 ? `há ${d} dias` : new Date(iso).toLocaleDateString('pt-BR');
 }
-function toast(t){ const el = $('#toast'); el.textContent = t; el.classList.add('on'); clearTimeout(toast.t); toast.t = setTimeout(() => el.classList.remove('on'), 1800); }
+function toast(t, rotulo, acao){
+  const el = $('#toast'); el.textContent = t; el.classList.toggle('com-acao', !!acao);
+  if (acao) { const b = document.createElement('button'); b.type = 'button'; b.textContent = rotulo; b.onclick = () => { el.classList.remove('on'); acao(); }; el.appendChild(b); }
+  el.classList.add('on'); clearTimeout(toast.t); toast.t = setTimeout(() => el.classList.remove('on'), acao ? 6000 : 1800);
+}
 const LS = {
   get(k, d){ try { const v = localStorage.getItem(k); return v == null ? d : JSON.parse(v); } catch { return d; } },
   set(k, v){ try { localStorage.setItem(k, JSON.stringify(v)); } catch {} }
@@ -481,16 +508,18 @@ const LS = {
 /* ================= estado ================= */
 let DADOS = {anuncios: []};
 let CONFIG = {};
-let MEM = LS.get('memoria', {favoritos:{}, vistos:{}, perimetro:null, perimetro_t:0});
-MEM.favoritos ||= {}; MEM.vistos ||= {};
+// "vistos" é o nome antigo da marcação que hoje é "oculto"; "abertos" marca sozinho o que já foi clicado
+let MEM = LS.get('memoria', {favoritos:{}, vistos:{}, abertos:{}, perimetro:null, perimetro_t:0});
+MEM.favoritos ||= {}; MEM.vistos ||= {}; MEM.abertos ||= {};
 const st0 = LS.get('filtros3', {}); if (st0.fontes && !st0.fontesV2) { st0.fontes = [...new Set([...st0.fontes, 'Chaves na Mão', 'Imovelweb', 'Imobiliárias'])]; st0.fontesV2 = 1; LS.set('filtros3', st0); }
 // fonte nova (Loft) entra ligada para quem já tinha filtros salvos
 function fontesNovas(o){ if (o && o.fontes && !o.fontesV3) { o.fontes = [...new Set([...o.fontes, 'Loft'])]; o.fontesV3 = 1; } return o; }
 fontesNovas(st0); LS.set('filtros3', st0);
-const st = Object.assign({faixas:{total:[0,3000], aluguel:[0,15000], condominio:[0,4000], area:[40,300]}, area:40, quartos:0, novo:0, soFav:false, visto:'todos', fontes:FONTES.slice(), perim:true, colunas:3, ordem:'novo', vista:'mapa', tipo:'todos', endereco:'todos'}, LS.get('filtros3', {}));
+const st = Object.assign({faixas:{total:[0,3000], aluguel:[0,15000], condominio:[0,4000], area:[40,300]}, area:40, quartos:0, novo:0, soFav:false, ocultos:'esconder', fontes:FONTES.slice(), perim:true, colunas:3, ordem:'novo', vista:'mapa', tipo:'todos', endereco:'todos'}, LS.get('filtros3', {}));
 if (st.vista === 'sem') { st.vista = 'lista'; st.endereco = 'sem'; }
-if (st.mostrar !== undefined) { st.soFav = st.mostrar === 'fav'; st.visto = st.mostrar === 'nao' ? 'nao' : st.mostrar === 'vistos' ? 'vistos' : 'todos'; delete st.mostrar; }
-if (!st.visto) st.visto = 'todos';
+if (st.mostrar !== undefined) { st.soFav = st.mostrar === 'fav'; delete st.mostrar; }
+delete st.visto;
+st.ocultos ||= 'esconder';
 if (!st.faixas) st.faixas = {total:[0,3000], aluguel:[0,15000], condominio:[0,4000], area:[40,300]};
 if (typeof st.total === 'number') { st.faixas.total[1] = st.total; delete st.total; }
 if (!st.neg) st.neg = 'aluguel';
@@ -501,10 +530,13 @@ const ativo = (m, id) => !!(m[id] && m[id].v);
 function marcaDe(m, x){
   if (typeof x === 'string') x = porId(x) || {id: x};
   const own = m[x.id]; if (own) return !!own.v;
-  return (x.antes || []).some(a => m[a] && m[a].v);
+  return outrosIds(x).some(a => m[a] && m[a].v);
 }
+// ids antigos do mesmo imóvel e dos anúncios repetidos juntados neste
+const outrosIds = x => (x.antes || []).concat(x.iguais || []);
 const fav = x => marcaDe(MEM.favoritos, x);
-const visto = x => marcaDe(MEM.vistos, x);
+const oculto = x => marcaDe(MEM.vistos, x);
+const aberto = x => !!(MEM.abertos[x.id] || outrosIds(x).some(a => MEM.abertos[a]));
 
 /* ================= tema ================= */
 let modoTema = LS.get('tema', 'auto');
@@ -642,10 +674,10 @@ const Nuvem = {
       toast('Sem permissão para ler a memória desta conta');
     }
   },
-  serializar(m){ return {favoritos: m.favoritos, vistos: m.vistos, perimetro: JSON.stringify(m.perimetro || null), perimetro_t: m.perimetro_t || 0,
+  serializar(m){ return {favoritos: m.favoritos, vistos: m.vistos, abertos: m.abertos || {}, perimetro: JSON.stringify(m.perimetro || null), perimetro_t: m.perimetro_t || 0,
     filtros: JSON.stringify(m.filtros || null), filtros_t: m.filtros_t || 0}; },
   ler(d){ let p = null, f = null; try { p = JSON.parse(d.perimetro || 'null'); } catch {} try { f = JSON.parse(d.filtros || 'null'); } catch {}
-    return {favoritos: d.favoritos || {}, vistos: d.vistos || {}, perimetro: p, perimetro_t: d.perimetro_t || 0, filtros: f, filtros_t: d.filtros_t || 0}; },
+    return {favoritos: d.favoritos || {}, vistos: d.vistos || {}, abertos: d.abertos || {}, perimetro: p, perimetro_t: d.perimetro_t || 0, filtros: f, filtros_t: d.filtros_t || 0}; },
   // marca que o site foi usado (no máximo uma vez por hora); a coleta automática pausa após 7 dias sem uso
   async registrarUso(){
     if (!this.user) return;
@@ -658,9 +690,9 @@ const Nuvem = {
     try { await this.ref.set({filtros: JSON.stringify(MEM.filtros || null), filtros_t: MEM.filtros_t || 0}, {merge:true}); }
     catch (e) { this.marcar('err', 'erro ao salvar', this.user.photoURL); }
   },
-  async marcacao(tipo, id, val){
+  async marcacao(tipo, valores){
     if (!this.user) return;
-    try { await this.ref.set({[tipo]: {[id]: val}}, {merge:true}); }
+    try { await this.ref.set({[tipo]: valores}, {merge:true}); }
     catch (e) { this.marcar('err', 'erro ao salvar', this.user.photoURL); }
   },
   async perimetro(){
@@ -674,7 +706,7 @@ const Nuvem = {
 };
 // junta duas memórias: em cada anúncio vale a marcação mais recente
 function juntar(a, b){
-  const m = {favoritos:{}, vistos:{}, perimetro:null, perimetro_t:0};
+  const m = {favoritos:{}, vistos:{}, abertos:Object.assign({}, a.abertos || {}, b.abertos || {}), perimetro:null, perimetro_t:0};
   for (const k of ['favoritos','vistos']) {
     m[k] = Object.assign({}, a[k] || {});
     for (const [id, v] of Object.entries(b[k] || {})) if (!m[k][id] || (m[k][id].t || 0) <= (v.t || 0)) m[k][id] = v;
@@ -688,31 +720,54 @@ function juntar(a, b){
   return m;
 }
 function marcar(tipo, id){
-  const val = {v: !marcaDe(MEM[tipo], id), t: Date.now()};
-  MEM[tipo][id] = val;
+  const x = porId(id) || {id};
+  const val = {v: !marcaDe(MEM[tipo], x), t: Date.now()}, valores = {};
+  for (const k of [id].concat(x.iguais || [])) valores[k] = MEM[tipo][k] = val;   // vale para os repetidos juntados
   LS.set('memoria', MEM);
-  Nuvem.marcacao(tipo, id, val);
+  Nuvem.marcacao(tipo, valores);
   aplicarMarcacao(id);
+}
+// aberto = a pessoa já clicou para ver (balão do mapa, anúncio ampliado ou "Abrir"); só serve para diferenciar
+function marcarAberto(id){
+  const x = porId(id); if (!x || MEM.abertos[id]) return;
+  const t = Math.floor(Date.now() / 1000), valores = {};
+  for (const k of [id].concat(x.iguais || [])) valores[k] = MEM.abertos[k] = t;
+  LS.set('memoria', MEM);
+  Nuvem.marcacao('abertos', valores);
+  pintarPino(id);
+  document.querySelectorAll(`.card[data-cid="${CSS.escape(id)}"]`).forEach(c => c.classList.add('aberto'));
+}
+// tira um anúncio da tela sem refazer o resto (ocultar)
+function retirar(id){
+  const m = marcadores.get(id);
+  if (m) { m.closePopup(); camadaPinos.removeLayer(m); marcadores.delete(id); }
+  visiveis = visiveis.filter(x => x.id !== id);
+  const i = listaAtual.findIndex(x => x.id === id);
+  if (i >= 0) { listaAtual.splice(i, 1); if (i < mostrados) mostrados--; $('#contLista').textContent = `${listaAtual.length.toLocaleString('pt-BR')} anúncios`; }
+  document.querySelectorAll(`.card[data-cid="${CSS.escape(id)}"]`).forEach(c => c.remove());
+  const amp = document.querySelector('#ampTela .amp'); if (amp && amp.dataset.id === id) fecharAmpliado();
+  pintarStatus(); pintarMostrar();
 }
 // atualiza pino, popup aberto e cartão sem refazer o mapa (só refaz se o filtro "Mostrar" tirar o anúncio)
 function aplicarMarcacao(id){
   const x = porId(id); if (!x) return;
-  // na lista (feed) o cartão fica no lugar, só muda de estado; no mapa o filtro "Mostrar" é reaplicado
-  const filtraMarca = st.soFav || st.visto !== 'todos';
-  if (filtraMarca && st.vista === 'mapa') { const m = marcadores.get(id); const aberto = m && m.isPopupOpen(); if (!aberto) { redesenhar(); return; } }
-  if (filtraMarca && st.vista !== 'mapa') { visiveis = filtrar(); desenharMapa(); }
-  atualizarPino(id);
+  if (st.ocultos === 'esconder' ? oculto(x) : st.ocultos === 'so' && !oculto(x)) { retirar(id); return; }
+  // na lista (feed) o cartão fica no lugar, só muda de estado; no mapa o filtro de favoritos é reaplicado
+  if (st.soFav && st.vista === 'mapa') { const m = marcadores.get(id); if (!(m && m.isPopupOpen())) { redesenhar(); return; } }
+  if (st.soFav && st.vista !== 'mapa') { visiveis = filtrar(); desenharMapa(); }
+  pintarPino(id);
   const m = marcadores.get(id);
   if (m && m.isPopupOpen()) m.getPopup().setContent(popup(x));
   document.querySelectorAll(`.card [data-id="${CSS.escape(id)}"]`).forEach(el => {
     const c = el.closest('.card'); if (c && !c.dataset.trocado) { c.dataset.trocado = 1; c.outerHTML = card(x); }
   });
+  pintarMostrar();
 }
 $('#conta').onclick = () => {
   const u = Nuvem.user;
   if (!Nuvem.ok) { $('#dlgTitulo').textContent = 'Sincronização ainda não configurada'; $('#dlgTexto').textContent = 'O login com Google será ativado assim que o projeto Firebase estiver configurado. Por enquanto as marcações ficam só neste aparelho.'; $('#btGoogle').style.display = 'none'; $('#btSairConta').style.display = 'none'; }
   else if (u) { $('#dlgTitulo').textContent = 'Conectado'; $('#dlgTexto').textContent = `Você está sincronizando como ${u.email}. Entre com a mesma conta nos outros aparelhos.`; $('#btGoogle').style.display = 'none'; $('#btSairConta').style.display = ''; }
-  else { $('#dlgTitulo').textContent = 'Sincronizar entre aparelhos'; $('#dlgTexto').textContent = 'Entre com sua conta Google. Favoritos, vistos e perímetro passam a valer em todos os aparelhos em que você entrar com a mesma conta.'; $('#btGoogle').style.display = ''; $('#btSairConta').style.display = 'none'; }
+  else { $('#dlgTitulo').textContent = 'Sincronizar entre aparelhos'; $('#dlgTexto').textContent = 'Entre com sua conta Google. Favoritos, ocultos, vistos e perímetro passam a valer em todos os aparelhos em que você entrar com a mesma conta.'; $('#btGoogle').style.display = ''; $('#btSairConta').style.display = 'none'; }
   $('#dlgConta').showModal();
 };
 $('#btGoogle').onclick = () => { $('#dlgConta').close(); Nuvem.entrar(); };
@@ -777,16 +832,16 @@ function filtrar(){
     (!x.area || naFaixa('area', x.area)) &&            // sem metragem informada: fica
     (st.tipo === 'todos' || (x.tipo || 'Apartamento') === st.tipo) &&
     (!st.quartos || !x.quartos || x.quartos >= st.quartos) &&   // sem quartos informados: fica
-    (!st.novo || (!x.inicial && horas(dataAnuncio(x)) <= st.novo)) &&
+    (!st.novo || ehNovo(x, st.novo)) &&
     (!st.soFav || fav(x)) &&
-    (st.visto === 'todos' || (st.visto === 'nao' ? !visto(x) : visto(x))) &&
+    (st.ocultos === 'mostrar' || (st.ocultos === 'so') === oculto(x)) &&
     (!st.perim || x.lat == null || noPerimetro(x))
   );
 }
 const valor = x => x.neg === 'venda' ? x.preco : x.total;
 function ordenar(l){
   const f = {
-    novo: (a, b) => (a.inicial ? 1 : 0) - (b.inicial ? 1 : 0) || new Date(dataAnuncio(b)) - new Date(dataAnuncio(a)),
+    novo: (a, b) => (antigo(a) ? 1 : 0) - (antigo(b) ? 1 : 0) || new Date(desdeDe(b)) - new Date(desdeDe(a)),
     total: (a, b) => valor(a) - valor(b),
     m2: (a, b) => (a.area ? valor(a) / a.area : 1e9) - (b.area ? valor(b) / b.area : 1e9),
     area: (a, b) => (b.area || 0) - (a.area || 0)
@@ -876,32 +931,44 @@ function detalhes(x){
 }
 function selos(x){
   let s = '';
-  if (!x.inicial && horas(dataAnuncio(x)) <= 24) s += '<span class="selo novo">novo</span>';
+  if (ehNovo(x)) s += '<span class="selo novo">novo</span>';
   if (x.total_anterior && x.total < x.total_anterior) s += `<span class="selo baixa">baixou ${brl(x.total_anterior - x.total)}</span>`;
   if (x.preco_anterior && x.preco < x.preco_anterior) s += `<span class="selo baixa">baixou ${brl(x.preco_anterior - x.preco)}</span>`;
   if (x.lat == null) s += '<span class="selo">sem endereço</span>';
   else if (x.aprox) s += '<span class="selo">local aproximado</span>';
   if (x.mobiliado) s += '<span class="selo">mobiliado</span>';
-  if (x.antes && x.antes.length) s += '<span class="selo" title="O mesmo imóvel já esteve no ar com outro link; favorito e visto continuam valendo">re-anunciado</span>';
+  if (x.antes && x.antes.length) s += '<span class="selo" title="O mesmo imóvel já esteve no ar com outro link; favorito e oculto continuam valendo">re-anunciado</span>';
   return s;
 }
 function quandoTxt(x){
   if (x.inicial) return 'no ar antes do início da coleta';
-  return (x.criado ? 'anunciado ' : 'visto pela 1ª vez ') + quando(dataAnuncio(x));
+  let t = (x.criado ? 'anunciado ' : 'visto pela 1ª vez ') + quando(dataAnuncio(x));
+  // a data é a da versão mostrada (a mais recente); se o imóvel já estava no ar antes, avisa
+  if (x.velho) t += ' · já estava no ar antes da coleta';
+  else if (x.desde && new Date(dataAnuncio(x)) - new Date(x.desde) > 2 * 864e5) t += ' · no ar desde ' + new Date(x.desde).toLocaleDateString('pt-BR');
+  return t;
 }
 function tambem(x){
   if (!x.tambem || !x.tambem.length) return '';
-  return `<div class="tambem">Também em: ${x.tambem.map(t => `<a href="${esc(t.url)}" target="_blank" rel="noopener">${esc(t.fonte)}</a>`).join(', ')}</div>`;
+  const n = {[x.fonte]: 1};
+  const links = x.tambem.map(t => {
+    n[t.fonte] = (n[t.fonte] || 0) + 1;
+    const quem = (t.quem || '').length > 28 ? t.quem.slice(0, 27) + '…' : t.quem;
+    const nome = t.fonte + (quem ? ` (${quem})` : n[t.fonte] > 1 ? ' ' + n[t.fonte] : '') + (t.breve ? ' · em breve' : '');
+    return `<a href="${esc(t.url)}" target="_blank" rel="noopener" data-a="abrir" data-id="${esc(x.id)}">${esc(nome)}</a>`;
+  });
+  return `<div class="tambem">Também em: ${links.join(', ')}</div>`;
 }
 function acoes(x, noCartao){
   return `<div class="acoes">
     <button data-a="copiar" data-id="${esc(x.id)}">Copiar link</button>
-    ${noCartao ? '' : `<button data-a="visto" data-id="${esc(x.id)}" class="${visto(x) ? 'on' : ''}">${visto(x) ? '✓ Visto' : 'Marcar visto'}</button>`}
+    ${noCartao ? '' : `<button data-a="ocultar" data-id="${esc(x.id)}" class="${oculto(x) ? 'on' : ''}">${oculto(x) ? 'Reexibir' : 'Ocultar'}</button>`}
     <a href="${esc(x.url)}" target="_blank" rel="noopener">Abrir ↗</a>
   </div>`;
 }
 const ICONE_OLHO_P = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></svg>';
 const ICONE_OLHO = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></svg>';
+const ICONE_OCULTAR = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9.9 5.2A9.9 9.9 0 0 1 12 5c6.4 0 10 7 10 7a17.6 17.6 0 0 1-3 3.8M6.6 6.6C3.7 8.5 2 12 2 12s3.6 7 10 7a9.7 9.7 0 0 0 4.4-1"/><path d="M9.9 9.9a3 3 0 0 0 4.2 4.2"/><path d="M3 3l18 18"/></svg>';
 const IC = {
   copiar: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h10"/></svg>',
   mapa: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 21s-7-6.2-7-11.5A7 7 0 0 1 19 9.5C19 14.8 12 21 12 21z"/><circle cx="12" cy="9.5" r="2.5"/></svg>',
@@ -914,18 +981,18 @@ const IC = {
 // mesma barra no cartão da lista e no popup do mapa:
 // à esquerda o que é seu (favorito, visto); à direita o que se faz com o anúncio
 function barra(x, noMapa){
-  const f = fav(x), v = visto(x), yt = ytId(x.video);
+  const f = fav(x), v = oculto(x), yt = ytId(x.video);
   const vid = x.video ? (yt ? `https://www.youtube.com/watch?v=${yt}` : x.url) : null;
   return `<div class="barra">
     <button class="bt est ${f ? 'on fav' : ''}" data-a="fav" data-id="${esc(x.id)}" title="${f ? 'Tirar dos favoritos' : 'Favoritar'}"><span class="i">${f ? '★' : '☆'}</span><span class="t">${f ? 'Favorito' : 'Favoritar'}</span></button>
-    <button class="bt est ${v ? 'on' : ''}" data-a="visto" data-id="${esc(x.id)}" title="${v ? 'Marcar como não visto' : 'Marcar como visto'}"><span class="i">${ICONE_OLHO_P}</span><span class="t">${v ? 'Visto' : 'Marcar visto'}</span></button>
+    <button class="bt est ${v ? 'on' : ''}" data-a="ocultar" data-id="${esc(x.id)}" title="${v ? 'Voltar a mostrar' : 'Ocultar: não quero mais ver'}"><span class="i">${v ? ICONE_OLHO_P : ICONE_OCULTAR}</span><span class="t">${v ? 'Reexibir' : 'Ocultar'}</span></button>
     <span class="esp"></span>
     ${!noMapa && x.lat != null ? `<button class="bt" data-a="mapa" data-id="${esc(x.id)}" title="Ver no mapa"><span class="i">${IC.mapa}</span><span class="t">Mapa</span></button>` : ''}
     ${x.lat != null ? `<button class="bt" data-a="rua" data-id="${esc(x.id)}" title="Ver a rua (Street View)"><span class="i">${IC.rua}</span><span class="t">Rua</span></button>` : ''}
     ${yt ? `<button class="bt" data-a="video" data-id="${esc(x.id)}" title="Ver vídeo"><span class="i">${IC.video}</span><span class="t">Vídeo</span></button>`
          : vid ? `<a class="bt" href="${esc(vid)}" target="_blank" rel="noopener" title="O vídeo está dentro do anúncio"><span class="i">${IC.video}</span><span class="t">Vídeo</span></a>` : ''}
     <button class="bt" data-a="copiar" data-id="${esc(x.id)}" title="Copiar link"><span class="i">${IC.copiar}</span><span class="t">Copiar</span></button>
-    <a class="bt prim" href="${esc(x.url)}" target="_blank" rel="noopener" title="Abrir o anúncio"><span class="t">Abrir</span><span class="i">${IC.abrir}</span></a>
+    <a class="bt prim" href="${esc(x.url)}" target="_blank" rel="noopener" data-a="abrir" data-id="${esc(x.id)}" title="Abrir o anúncio"><span class="t">Abrir</span><span class="i">${IC.abrir}</span></a>
   </div>`;
 }
 function fmtTel(n){ return n.length === 11 ? `(${n.slice(0,2)}) ${n.slice(2,7)}-${n.slice(7)}` : `(${n.slice(0,2)}) ${n.slice(2,6)}-${n.slice(6)}`; }
@@ -946,6 +1013,7 @@ function contato(x){
 // anúncio ampliado (não é tela cheia): fotos grandes, descrição completa; fecha clicando fora, no ✕ ou com Esc
 async function abrirAmpliado(x){
   fecharAmpliado();
+  marcarAberto(x.id);
   const local = esc([x.endereco, x.bairro, x.cidade].filter(Boolean).join(', '));
   const txt = x.desc || ((x.fonte === 'OLX' || x.fonte === 'VivaReal') ? x.titulo : '') || '';
   document.body.insertAdjacentHTML('beforeend', `<div class="amp-tela" id="ampTela"><div class="amp" role="dialog" aria-modal="true" data-id="${esc(x.id)}">
@@ -1019,12 +1087,14 @@ async function alternarDescricao(b, x){
   box.innerHTML = `${esc(d.descricao || x.desc)} <button class="vermais" data-a="desc" data-id="${esc(x.id)}">ver menos</button>`;
 }
 function precoGrande(x){
+  const extra = (x.em_breve ? '<span class="selo-breve" title="Ainda ocupado: o QuintoAndar anuncia como disponível em breve">EM BREVE</span>' : '')
+    + '<span class="selo-visto">já visto</span>';
   return x.neg === 'venda'
-    ? `<div class="preco"><b class="num">${brl(x.preco)}</b><small>à venda</small><span class="selo-venda">VENDA</span></div>`
-    : `<div class="preco"><b class="num">${brl(x.total)}</b><small>aluguel + cond.</small></div>`;
+    ? `<div class="preco"><b class="num">${brl(x.preco)}</b><small>à venda</small><span class="selo-venda">VENDA</span>${extra}</div>`
+    : `<div class="preco"><b class="num">${brl(x.total)}</b><small>aluguel + cond.</small>${extra}</div>`;
 }
 function card(x){
-  return `<article class="card ${visto(x) ? 'visto' : ''}">
+  return `<article class="card ${oculto(x) ? 'oculto' : ''} ${aberto(x) ? 'aberto' : ''}" data-cid="${esc(x.id)}">
     ${carrossel(x, {semEstrela:true})}
     <div class="info">
       ${precoGrande(x)}
@@ -1043,7 +1113,7 @@ function card(x){
 function icones(x){
   return `<div class="icones">
           <button class="ic ${fav(x) ? 'on fav' : ''}" data-a="fav" data-id="${esc(x.id)}" title="${fav(x) ? 'Tirar dos favoritos' : 'Favoritar'}" aria-label="Favoritar">${fav(x) ? '★' : '☆'}</button>
-          <button class="ic ${visto(x) ? 'on' : ''}" data-a="visto" data-id="${esc(x.id)}" title="${visto(x) ? 'Marcar como não visto' : 'Marcar como visto'}" aria-label="Visto">${ICONE_OLHO}</button>
+          <button class="ic ${oculto(x) ? 'on' : ''}" data-a="ocultar" data-id="${esc(x.id)}" title="${oculto(x) ? 'Voltar a mostrar' : 'Ocultar'}" aria-label="Ocultar">${ICONE_OLHO}</button>
         </div>`;
 }
 function popup(x){
@@ -1124,16 +1194,33 @@ function trocarMapaBase(){
 }
 // agrupamento do Leaflet.markercluster: agrupa o que está próximo em qualquer zoom;
 // no zoom máximo, pinos no mesmo endereço se abrem em leque ao clicar
-const camadaPinos = L.markerClusterGroup({maxClusterRadius:44, showCoverageOnHover:false, spiderfyOnMaxZoom:true,
-  spiderfyDistanceMultiplier:1.6, zoomToBoundsOnClick:true, chunkedLoading:true,
+const camadaPinos = L.markerClusterGroup({maxClusterRadius:58, showCoverageOnHover:false, spiderfyOnMaxZoom:true,
+  spiderfyDistanceMultiplier:2.6, zoomToBoundsOnClick:true, chunkedLoading:true,
   iconCreateFunction: c => iconeGrupo(c.getChildCount())}).addTo(mapa);
 const camadaPerim = L.featureGroup().addTo(mapa);
 const marcadores = new Map();
 
-function icone(x){
-  const c = ['pin']; if (fav(x)) c.push('fav'); else if (visto(x)) c.push('visto'); else if (!x.inicial && horas(dataAnuncio(x)) <= 24) c.push('novo');
-  return L.divIcon({className:'', html:`<div class="${c.join(' ')}" style="background:${COR[x.fonte]}"></div>`, iconSize:[TOQUE ? 18 : 24, TOQUE ? 18 : 24], iconAnchor:TOQUE ? [9,9] : [12,12], popupAnchor:[0,-6]});
+let pinoAtivo = null;   // anúncio com o balão aberto
+function precoCurto(x){
+  const v = valor(x) || 0, n = (k, c) => k.toLocaleString('pt-BR', {maximumFractionDigits:c});
+  if (x.neg !== 'venda') return 'R$ ' + n(v, 0);
+  return v >= 999500 ? `R$ ${n(v / 1e6, 2)} mi` : `R$ ${n(v / 1e3, 0)} mil`;
 }
+function icone(x){
+  const c = ['etq'];
+  if (x.neg === 'venda') c.push('venda');
+  if (ehNovo(x)) c.push('novo');
+  if (x.em_breve) c.push('breve');
+  if (fav(x)) c.push('fav');
+  if (aberto(x)) c.push('aberto');
+  if (oculto(x)) c.push('oculto');
+  if (pinoAtivo === x.id) c.push('ativo');
+  const dica = [x.fonte, x.neg === 'venda' ? 'à venda' : 'aluguel + condomínio', x.em_breve ? 'disponível em breve' : '', aberto(x) ? 'já visto' : ''].filter(Boolean).join(' · ');
+  return L.divIcon({className:'etq-wrap', iconSize:[0,0], iconAnchor:[0,0], popupAnchor:[0,-12],
+    html:`<div class="${c.join(' ')}" title="${esc(dica)}"><i style="background:${COR[x.fonte]}"></i>${fav(x) ? '<span class="est">★</span>' : ''}<span>${precoCurto(x)}</span>${x.em_breve ? '<small>em breve</small>' : ''}</div>`});
+}
+// as já abertas ficam por baixo das que ainda não foram vistas
+const ordemPino = x => pinoAtivo === x.id ? 2000 : aberto(x) ? -500 : 0;
 function iconeGrupo(n){
   const s = Math.round((n < 10 ? 30 : n < 100 ? 36 : 44) * (TOQUE ? 1 : 1.25));
   return L.divIcon({className:'', html:`<div class="clu num" style="width:${s}px;height:${s}px">${n}</div>`, iconSize:[s,s], iconAnchor:[s/2,s/2]});
@@ -1141,13 +1228,20 @@ function iconeGrupo(n){
 function desenharMapa(){
   camadaPinos.clearLayers(); marcadores.clear();
   camadaPinos.addLayers(visiveis.filter(x => x.lat != null).map(x => {
-    const m = L.marker([x.lat, x.lng], {icon: icone(x), riseOnHover:true}).bindPopup(() => popup(x), {maxWidth:POP_L, minWidth:POP_L, autoPanPadding:[24,24]});
+    const m = L.marker([x.lat, x.lng], {icon: icone(x), riseOnHover:true, zIndexOffset: ordemPino(x)}).bindPopup(() => popup(x), {maxWidth:POP_L, minWidth:POP_L, autoPanPadding:[24,24]});
+    m.on('popupopen', () => { pinoAtivo = x.id; marcarAberto(x.id); pintarPino(x.id); });
+    m.on('popupclose', () => { if (pinoAtivo === x.id) pinoAtivo = null; pintarPino(x.id); });
     marcadores.set(x.id, m);
     return m;
   }));
 }
-// atualiza só o ícone de um pino (estrela/visto) sem refazer o mapa nem fechar o popup
-function atualizarPino(id){ const m = marcadores.get(id), x = porId(id); if (m && x) m.setIcon(icone(x)); }
+// redesenha só a etiqueta de um anúncio, sem refazer o mapa nem fechar o balão
+function pintarPino(id){
+  const m = marcadores.get(id), x = porId(id); if (!m || !x) return;
+  m.options.icon = icone(x);
+  const el = m.getElement(); if (el) el.innerHTML = m.options.icon.options.html;
+  m.setZIndexOffset(ordemPino(x));
+}
 
 function garantirIds(){
   ((MEM.perimetro && MEM.perimetro.features) || []).forEach((f, i) => {
@@ -1286,9 +1380,10 @@ function redesenhar(){
   mapa.closePopup();
   desenharMapa();
   if (st.vista !== 'mapa') { const y = $('#vistaLista').scrollTop; desenharLista(); while (mostrados < listaAtual.length && $('#vistaLista').scrollHeight - 800 < y) maisLista(); $('#vistaLista').scrollTop = y; }
-  $('#status').textContent = `${visiveis.length.toLocaleString('pt-BR')} anúncios · atualizado ${DADOS.gerado ? quando(DADOS.gerado) : '—'}`;
+  pintarStatus(); pintarMostrar();
   guardarFiltros();
 }
+function pintarStatus(){ $('#status').textContent = `${visiveis.length.toLocaleString('pt-BR')} anúncios · atualizado ${DADOS.gerado ? quando(DADOS.gerado) : '—'}`; }
 function trocarVista(v){
   st.vista = v;
   document.querySelectorAll('#abas button').forEach(b => b.classList.toggle('on', b.dataset.v === v));
@@ -1348,19 +1443,20 @@ function pintarDetalhe(){
 }
 $('#btDetalhar').addEventListener('click', () => { st.detalhe = !st.detalhe; pintarDetalhe(); redesenhar(); });
 REPINTA.push(pintarDetalhe); pintarDetalhe(); chips('#fQuartos', 'quartos', Number); chips('#fTipo', 'tipo', String); chips('#fEndereco', 'endereco', String); chips('.fNovo', 'novo', Number);
-// botões de "Mostrar": favoritos liga/desliga; vistos gira entre todos → só vistos → não vistos
-const CICLO_VISTO = {todos:'vistos', vistos:'nao', nao:'todos'};
+// botões de "Mostrar": favoritos liga/desliga; ocultos gira entre escondidos → junto com os outros → só eles
+const CICLO_OCULTO = {esconder:'mostrar', mostrar:'so', so:'esconder'};
 function pintarMostrar(){
   document.querySelectorAll('.tg[data-tg=fav]').forEach(b => b.classList.toggle('on', !!st.soFav));
-  document.querySelectorAll('.tg[data-tg=visto]').forEach(b => {
-    b.classList.toggle('on', st.visto !== 'todos');
-    b.innerHTML = ICONE_OLHO_P + ({todos:' Vistos e não vistos', vistos:' Só vistos', nao:' Não vistos'})[st.visto];
-    b.title = 'Clique para alternar: só vistos → não vistos → todos';
+  const n = DADOS.anuncios.reduce((s, x) => s + (oculto(x) ? 1 : 0), 0);
+  document.querySelectorAll('.tg[data-tg=oculto]').forEach(b => {
+    b.classList.toggle('on', st.ocultos !== 'esconder');
+    b.innerHTML = ICONE_OCULTAR + ({esconder:' Ocultos escondidos', mostrar:' Mostrando ocultos', so:' Só ocultos'})[st.ocultos] + (n ? ` (${n})` : '');
+    b.title = 'Clique para alternar: escondidos → mostrar junto → só os ocultos';
   });
 }
 document.addEventListener('click', e => {
   const b = e.target.closest('.tg'); if (!b) return;
-  if (b.dataset.tg === 'fav') st.soFav = !st.soFav; else st.visto = CICLO_VISTO[st.visto] || 'todos';
+  if (b.dataset.tg === 'fav') st.soFav = !st.soFav; else st.ocultos = CICLO_OCULTO[st.ocultos] || 'esconder';
   pintarMostrar(); redesenhar();
 });
 pintarMostrar();
@@ -1497,6 +1593,7 @@ document.addEventListener('click', e => {
     const carr = b.closest('.carr'); completarFotos(carr); trocarFoto(carr, a === 'ant' ? -1 : 1); return;
   }
   const id = b.dataset.id; const x = porId(id); if (!x) return;
+  if (a === 'abrir') { marcarAberto(id); return; }   // o link segue normalmente
   if (a === 'copiar') { copiar(x.url); return; }
   if (a === 'copiartel') { copiar(x.zap || x.tel); return; }
   if (a === 'tel') { e.stopPropagation(); b.closest('.contato').classList.toggle('aberto'); return; }
@@ -1505,10 +1602,12 @@ document.addEventListener('click', e => {
   if (a === 'mapa') { e.stopPropagation(); abrirMapaJanela(x); return; }
   if (a === 'video') { e.stopPropagation(); abrirVideo(ytId(x.video)); return; }
   if (a === 'desc') { e.stopPropagation(); alternarDescricao(b, x); return; }
-  if (a === 'fav' || a === 'visto') {
+  if (a === 'fav' || a === 'ocultar') {
     e.stopPropagation();
     marcar(a === 'fav' ? 'favoritos' : 'vistos', id);
     if (a === 'fav') toast(fav(id) ? 'Favoritado' : 'Removido dos favoritos');
+    else if (oculto(x)) toast('Anúncio ocultado', 'Desfazer', () => { marcar('vistos', id); redesenhar(); });
+    else toast('Anúncio reexibido');
     repintarAmpliado(x);
   }
 });

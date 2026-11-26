@@ -105,7 +105,7 @@ def tipo_imovel(texto):
 QA_URL = "https://apigw.prod.quintoandar.com.br/house-listing-search/v2/search/list"
 QA_CAMPOS = ["id", "location", "rent", "totalCost", "iptuPlusCondominium", "condominium", "iptu", "area",
              "bedrooms", "bathrooms", "parkingSpots", "address", "neighbourhood", "regionName", "city", "type",
-             "imageList", "isFurnished", "shortRentDescription"]
+             "imageList", "isFurnished", "shortRentDescription", "listingTags"]
 
 def coletar_quintoandar():
     base = [(f"fields[{i}]", f) for i, f in enumerate(QA_CAMPOS)] + [
@@ -135,9 +135,10 @@ def coletar_quintoandar():
             if not loc.get("lat"):
                 continue
             aluguel = num(s.get("rent"))
-            condo, iptu = num(s.get("condominium")), num(s.get("iptu"))
+            condo, iptu = max(0, num(s.get("condominium"))), max(0, num(s.get("iptu")))   # -1 = não informado
             if not condo and not iptu:  # fallback: só veio a soma
-                condo = num(s.get("iptuPlusCondominium"))
+                condo = max(0, num(s.get("iptuPlusCondominium")))
+            marcas = (h.get("fields") or {}).get("listingTags") or []
             fotos = [f"https://www.quintoandar.com.br/img/med/{f}" for f in (s.get("imageList") or [])[:MAX_FOTOS]]
             tipo = tipo_imovel(s.get("type"))
             if not tipo:
@@ -154,6 +155,8 @@ def coletar_quintoandar():
                 "cidade": s.get("city") or "", "endereco": s.get("address") or "",
                 "mobiliado": bool(s.get("isFurnished")),
                 "descricao": (s.get("shortRentDescription") or "").strip(),
+                # ainda ocupado, mas já anunciado: o "disponível em breve" do QuintoAndar
+                "em_breve": "RENT_ON_TERMINATION" in marcas,
             })
         offset += len(hits)
         if not hits or offset >= total:
@@ -1236,41 +1239,155 @@ def no_perimetro(lat, lng, perim, margem_m=400):
 PRIORIDADE = {"QuintoAndar": 0, "VivaReal": 1, "Chaves na Mão": 2, "Imobiliárias": 3, "Loft": 4, "Imovelweb": 5, "OLX": 6}
 BAIRROS_PERIM = {sem_acento(b.replace("-", " ")) for bs in BAIRROS_BUSCA.values() for b in bs}
 
+def _ts(txt):
+    try:
+        d = datetime.fromisoformat(str(txt).replace("Z", "+00:00"))
+        return (d if d.tzinfo else d.replace(tzinfo=timezone.utc)).timestamp()
+    except ValueError:
+        return 0
+
+def _ts_versao(v):
+    """Quando esta versão do anúncio entrou no ar (0 = não se sabe: já existia quando a coleta começou)."""
+    if v.get("criado"):
+        return _ts(v["criado"])
+    return 0 if v.get("inicial") else _ts(v.get("primeiro"))
+
+def _mais_recente_primeiro(lista):
+    return sorted(lista, key=lambda v: (-_ts_versao(v), PRIORIDADE.get(v["fonte"], 9), v["id"]))
+
+def _rua(v):
+    return re.sub(r"[\d\W]+", "", sem_acento(v.get("endereco")))
+
+def _numero(v):
+    m = re.search(r"\b(\d{1,5})\s*$", v.get("endereco") or "")
+    return m.group(1).lstrip("0") if m else ""
+
+def _iptu_bate(a, b):
+    """Iguais (com arredondamento); muita gente digita o IPTU mensal no campo anual, então x e 12x também conferem."""
+    return abs(a - b) <= max(2, 0.15 * max(a, b)) or abs(a * 12 - b) <= 12 or abs(b * 12 - a) <= 12
+
+def _ruas_batem(a, b, numero=True):
+    ra, rb = _rua(a), _rua(b)
+    if ra and rb and ra not in rb and rb not in ra:
+        return False
+    na, nb = _numero(a), _numero(b)
+    return not (numero and na and nb and na != nb)
+
+def _perto(a, b, graus):
+    return (a.get("lat") is not None and b.get("lat") is not None
+            and abs(a["lat"] - b["lat"]) < graus and abs(a["lng"] - b["lng"]) < graus)
+
+def _chaves_foto(v):
+    saida = set()
+    for u in v.get("fotos") or []:
+        u = u.split("?")[0]
+        saida.add(u.split("/vr-listing/")[1].split("/")[0] if "/vr-listing/" in u else u.rsplit("/", 1)[-1])
+    return saida
+
+def _texto_parecido(a, b):
+    def trios(v):
+        p = re.findall(r"[a-z0-9]+", sem_acento(v.get("descricao")))
+        return {tuple(p[i:i + 3]) for i in range(len(p) - 2)}
+    x, y = trios(a), trios(b)
+    return min(len(x), len(y)) >= 12 and len(x & y) / min(len(x), len(y)) >= 0.8
+
+def mesmo_anuncio(a, b, campo):
+    """Mesmíssimo valor (aluguel ou preço), condomínio, IPTU e área = mesmo anúncio, desde que o resto não
+    contradiga (tipo, lugar, rua, quartos). Vale também entre anúncios do mesmo site. Se o valor mudou, não junta."""
+    if not (a.get(campo) and b.get(campo) and a.get("area") and b.get("area")):
+        return False
+    if round(a[campo]) != round(b[campo]) or abs(a["area"] - b["area"]) >= 1:
+        return False
+    if a.get("tipo") and b.get("tipo") and a["tipo"] != b["tipo"]:
+        return False
+    ac, bc = max(0, a.get("condominio") or 0), max(0, b.get("condominio") or 0)
+    ai, bi = max(0, a.get("iptu") or 0), max(0, b.get("iptu") or 0)
+    if abs(ac - bc) > 1:                      # condomínio igual (ou nenhum dos dois informa)
+        return False
+    # condomínio "quebrado" (ex.: 3.258) na mesma rua identifica o apartamento mesmo que cada site digite um IPTU
+    digital = bool(ac % 50 and _rua(a) and _rua(b))
+    if ai and bi and not digital and not _iptu_bate(ai, bi):   # IPTU parecido quando os dois informam
+        return False
+    ba, bb = sem_acento(a.get("bairro")), sem_acento(b.get("bairro"))
+    if not ((ba and ba == bb) or _perto(a, b, 0.006)):
+        return False
+    if a.get("lat") is not None and b.get("lat") is not None and not a.get("aprox") and not b.get("aprox") and not _perto(a, b, 0.003):
+        return False
+    if not _ruas_batem(a, b, numero=not (ai and bi and _iptu_bate(ai, bi))):   # IPTU conferindo, nº divergente é erro de cadastro
+        return False
+    forte = bool(ac and ai and bi and _iptu_bate(ai, bi))            # condomínio e IPTU conferem: quartos/vagas divergentes são erro de cadastro
+    qa, qb = a.get("quartos") or 0, b.get("quartos") or 0
+    if qa and qb and abs(qa - qb) > (1 if forte else 0):
+        return False
+    va, vb = a.get("vagas") or 0, b.get("vagas") or 0
+    if not forte and va and vb and va != vb:
+        return False
+    if ac:
+        return True                           # valor, condomínio e área iguais
+    # sem condomínio para comparar: precisa de mais um sinal (IPTU igual, mesma rua, mesmo título com os mesmos cômodos,
+    # foto repetida ou descrição muito parecida)
+    titulo = sem_acento(a.get("titulo"))
+    mesmo_titulo = titulo and titulo == sem_acento(b.get("titulo")) and qa == qb and a.get("banheiros") == b.get("banheiros")
+    return bool((ai and bi and abs(ai - bi) <= 2) or (_rua(a) and _rua(b)) or mesmo_titulo or (_chaves_foto(a) & _chaves_foto(b)) or _texto_parecido(a, b))
+
+def _absorver(dono, v):
+    """dono é a versão mais recente e é a que aparece; v vira um link em 'também em' e completa o que faltar."""
+    links = dono.setdefault("tambem", [])
+    if v["url"] != dono["url"] and len(links) < 8 and all(t["url"] != v["url"] for t in links):
+        e = {"fonte": v["fonte"], "url": v["url"]}
+        if v.get("anunciante"): e["quem"] = v["anunciante"]
+        if v.get("em_breve"): e["breve"] = 1
+        links.append(e)
+    # a marcação (favorito, oculto, visto) feita em qualquer um dos anúncios vale para o conjunto
+    dono["iguais"] = sorted(set(dono.get("iguais") or []) | {v["id"]} | set(v.get("antes") or []))
+    # desde quando o imóvel está no ar (a data mostrada é a da versão mais recente)
+    datas = (dono.get("desde"), dono.get("criado") or dono.get("primeiro"), v.get("criado") or v.get("primeiro"))
+    d = min((x for x in datas if x and _ts(x)), key=_ts, default=None)
+    if d: dono["desde"] = d
+    if v.get("inicial") and not v.get("criado"): dono["velho"] = True
+    if v.get("em_breve") and v["fonte"] != dono["fonte"]: dono["em_breve"] = True
+    campos = ["condominio", "iptu", "quartos", "banheiros", "vagas", "endereco", "descricao", "video"]
+    if not dono.get("anunciante") or dono.get("anunciante") == v.get("anunciante"):
+        campos += ["tel", "zap"]              # telefone de outra imobiliária não entra no anúncio desta
+    for k in campos:
+        atual = dono.get(k)
+        if (not atual or (isinstance(atual, (int, float)) and atual < 0)) and v.get(k):
+            dono[k] = v[k]
+    if len(dono.get("fotos") or []) < 3 and len(v.get("fotos") or []) > len(dono.get("fotos") or []):
+        dono["fotos"] = v["fotos"]
+    if (dono.get("lat") is None or dono.get("aprox")) and v.get("lat") is not None and not v.get("aprox"):
+        dono["lat"], dono["lng"], dono["aprox"] = v["lat"], v["lng"], False
+
 def agrupar_repetidos(lista):
-    """O mesmo apartamento costuma estar em vários sites (imobiliárias publicam em todos).
-    Junta quem tem mesma cidade, mesmo aluguel, área igual (±1 m²), quartos compatíveis e está
-    no mesmo bairro ou a menos de ~600 m. Fica o anúncio da fonte mais completa; os outros viram 'também em'."""
-    lista = sorted(lista, key=lambda v: (PRIORIDADE.get(v["fonte"], 9), v["id"]))
+    """O mesmo apartamento costuma estar em vários sites e várias vezes no mesmo site. Junta (a) quem tem os mesmos
+    aluguel, condomínio, IPTU e área (mesmo_anuncio) e (b), entre sites diferentes, mesmo aluguel, área ±1 m², quartos
+    compatíveis e mesmo bairro ou ~600 m. Aparece a versão mais recente; as outras viram 'também em'."""
     baldes, saida = {}, []
-    for v in lista:
+    for v in _mais_recente_primeiro(lista):
         if not v.get("aluguel") or not v.get("area"):
             saida.append(v); continue
         cid, alug, area = sem_acento(v.get("cidade")), int(round(v["aluguel"])), int(round(v["area"]))
         dono = None
         for a in (area - 1, area, area + 1):
             for p in baldes.get((cid, alug, a), []):
+                if mesmo_anuncio(p, v, "aluguel"):
+                    dono = p; break
                 if p["fonte"] == v["fonte"]:
                     continue
                 if p.get("quartos") and v.get("quartos") and p["quartos"] != v["quartos"]:
                     continue
-                perto = (p.get("lat") and v.get("lat") and abs(p["lat"] - v["lat"]) < 0.006 and abs(p["lng"] - v["lng"]) < 0.006)
+                pc, vc = p.get("condominio") or 0, v.get("condominio") or 0
+                if (pc > 0 and vc > 0 and abs(pc - vc) > max(30, 0.10 * max(pc, vc))
+                        and _rua(p) and _rua(v) and not _ruas_batem(p, v, numero=False)):
+                    continue                  # outra rua e outro condomínio: são apartamentos diferentes
                 mesmo_bairro = sem_acento(p.get("bairro")) and sem_acento(p.get("bairro")) == sem_acento(v.get("bairro"))
-                if perto or mesmo_bairro:
+                if _perto(p, v, 0.006) or mesmo_bairro:
                     dono = p; break
             if dono:
                 break
         if dono:
-            dono.setdefault("tambem", []).append({"fonte": v["fonte"], "url": v["url"]})
-            for k in ("condominio", "iptu", "quartos", "banheiros", "vagas", "endereco", "criado", "tel", "zap"):
-                if not dono.get(k) and v.get(k):
-                    dono[k] = v[k]
-            if len(v.get("fotos") or []) > len(dono.get("fotos") or []):
-                dono["fotos"] = v["fotos"]
-            if (not dono.get("lat") or dono.get("aprox")) and v.get("lat") and not v.get("aprox"):
-                dono["lat"], dono["lng"], dono["aprox"] = v["lat"], v["lng"], False
-            dono["total"] = dono["aluguel"] + (dono.get("condominio") or 0)
-            if v.get("primeiro") and (not dono.get("primeiro") or v["primeiro"] < dono["primeiro"]):
-                dono["primeiro"] = v["primeiro"]
+            _absorver(dono, v)
+            dono["total"] = dono["aluguel"] + max(0, dono.get("condominio") or 0)
         else:
             baldes.setdefault((cid, alug, area), []).append(v)
             saida.append(v)
@@ -1280,22 +1397,21 @@ def agrupar_venda(lista):
     """O mesmo apartamento à venda costuma estar em vários sites e em várias imobiliárias do mesmo site.
     Junta quem tem mesmo preço, área igual (±1 m²), no mesmo bairro ou a ~60 m, quartos/vagas compatíveis (0 = não informado),
     condomínio parecido (±30 ou ±10%; se um não informa, a área tem que ser idêntica) e rua compatível quando os dois informam.
-    Fica o anúncio da fonte mais completa; os outros viram 'também em' (um link por site)."""
-    lista = sorted(lista, key=lambda v: (PRIORIDADE.get(v["fonte"], 9), v["id"]))
+    Aparece a versão mais recente; as outras viram 'também em'."""
     baldes, saida = {}, []
-    def rua(v): return re.sub(r"[\d\W]+", "", sem_acento(v.get("endereco")))
-    for v in lista:
+    for v in _mais_recente_primeiro(lista):
         if not v.get("preco") or not v.get("area"):
             saida.append(v); continue
         cid, preco, area = sem_acento(v.get("cidade")), int(round(v["preco"])), int(round(v["area"]))
         dono = None
         for a in (area - 1, area, area + 1):
             for q in baldes.get((cid, preco, a), []):
+                if mesmo_anuncio(q, v, "preco"):
+                    dono = q; break
                 if abs(q["area"] - v["area"]) > 1: continue
-                # QuintoAndar e Loft anunciam cada unidade uma só vez: dois anúncios do mesmo site são unidades diferentes do prédio
+                # QuintoAndar e Loft anunciam cada unidade uma só vez: no mesmo site, só junta com todos os valores iguais (acima)
                 if q["fonte"] == v["fonte"] and v["fonte"] in ("QuintoAndar", "Loft"): continue
-                perto = (q.get("lat") is not None and v.get("lat") is not None
-                         and abs(q["lat"] - v["lat"]) < 0.0006 and abs(q["lng"] - v["lng"]) < 0.0006)
+                perto = _perto(q, v, 0.0006)
                 # mesmo ponto, preço e área: condomínio e nº de quartos que divergem entre sites são diferença de cadastro, não outro apartamento
                 if q.get("quartos") and v.get("quartos") and abs(q["quartos"] - v["quartos"]) > (1 if perto else 0): continue
                 if q.get("vagas") and v.get("vagas") and q["vagas"] != v["vagas"]: continue
@@ -1303,22 +1419,14 @@ def agrupar_venda(lista):
                 if qc and vc:
                     if not perto and abs(qc - vc) > max(30, 0.10 * max(qc, vc)): continue
                 elif q["area"] != v["area"]: continue
-                ra, rb = rua(q), rua(v)
+                ra, rb = _rua(q), _rua(v)
                 if ra and rb and ra not in rb and rb not in ra: continue
                 bq, bv = sem_acento(q.get("bairro")), sem_acento(v.get("bairro"))
                 if not (perto or (bq and bq == bv) or (ra and ra == rb)): continue
                 dono = q; break
             if dono: break
         if dono:
-            if not any(t["fonte"] == v["fonte"] for t in dono.get("tambem", [])):
-                dono.setdefault("tambem", []).append({"fonte": v["fonte"], "url": v["url"]})
-            for k in ("condominio", "iptu", "quartos", "banheiros", "vagas", "endereco", "criado", "tel", "zap", "anunciante"):
-                if not dono.get(k) and v.get(k): dono[k] = v[k]
-            if len(v.get("fotos") or []) > len(dono.get("fotos") or []): dono["fotos"] = v["fotos"]
-            if (dono.get("lat") is None or dono.get("aprox")) and v.get("lat") is not None and not v.get("aprox"):
-                dono["lat"], dono["lng"], dono["aprox"] = v["lat"], v["lng"], False
-            if v.get("primeiro") and (not dono.get("primeiro") or v["primeiro"] < dono["primeiro"]): dono["primeiro"] = v["primeiro"]
-            if v.get("inicial") is False: dono["inicial"] = False
+            _absorver(dono, v)
         else:
             baldes.setdefault((cid, preco, area), []).append(v)
             saida.append(v)
@@ -1660,7 +1768,8 @@ def gerar_site(estado, meta):
     lista = agrupar_repetidos(lista)
     campos = ["id", "fonte", "url", "lat", "lng", "aprox", "aluguel", "condominio", "iptu", "total", "area",
               "quartos", "banheiros", "vagas", "bairro", "cidade", "endereco", "fotos", "titulo", "primeiro",
-              "criado", "inicial", "total_anterior", "mobiliado", "anunciante", "tambem", "tipo", "video", "antes", "tel", "zap"]
+              "criado", "inicial", "total_anterior", "mobiliado", "anunciante", "tambem", "tipo", "video", "antes", "tel", "zap",
+              "iguais", "desde", "velho", "em_breve"]
     FOTOS_SITE, DESC_SITE, FOTOS_VENDA = 4, 180, 30
     import hashlib, shutil
     det_dir = SITE / "det"
@@ -1692,7 +1801,8 @@ def gerar_site(estado, meta):
         (det_dir / f"{n}.json").write_text(json.dumps(conteudo, ensure_ascii=False, separators=(",", ":")), encoding="utf-8")
     log(f"Repetidos entre sites juntados: {sum(len(v.get('tambem', [])) for v in lista)}")
     cv = ["id", "fonte", "url", "lat", "lng", "aprox", "neg", "preco", "preco_anterior", "condominio", "iptu", "area", "quartos",
-          "banheiros", "vagas", "bairro", "cidade", "endereco", "titulo", "primeiro", "criado", "inicial", "anunciante", "tipo", "tel", "zap", "tambem"]
+          "banheiros", "vagas", "bairro", "cidade", "endereco", "titulo", "primeiro", "criado", "inicial", "anunciante", "tipo", "tel", "zap", "tambem",
+          "iguais", "desde", "velho"]
     venda, brutos_v = [], []  # arquivo à parte: a página só baixa quando a pessoa escolhe Venda ou Ambos
     for v in carregar(VENDA, {}).values():
         if not isinstance(v, dict): continue
